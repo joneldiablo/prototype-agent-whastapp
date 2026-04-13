@@ -107,10 +107,23 @@
 
   <script>
     const API_BASE = '';
-    let authHeader = btoa('admin:password123');
+    let authHeader = '';
+
+    function setAuthHeader() {
+      const user = prompt('Usuario:');
+      if (!user) return false;
+      const pass = prompt('Contraseña:');
+      if (!pass) return false;
+      authHeader = btoa(`${user}:${pass}`);
+      return true;
+    }
 
     function getHeaders() {
       return { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` };
+    }
+
+    if (!setAuthHeader()) {
+      alert('Se requieren credenciales para acceder');
     }
 
     async function checkStatus() {

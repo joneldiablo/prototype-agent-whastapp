@@ -30,7 +30,19 @@ export function basicAuth(req: Request, res: Response, next: NextFunction): void
   const authHeader = req.headers.authorization;
   const credentials = parseBasicAuth(authHeader);
   
-  if (!credentials || !validateCredentials(credentials.user, credentials.pass)) {
+  if (!credentials) {
+    res.set('WWW-Authenticate', 'Basic realm="Admin Panel"');
+    res.status(401).json({
+      success: false,
+      error: true,
+      status: 401,
+      code: 401,
+      message: 'Unauthorized: Credenciales inválidas',
+    });
+    return;
+  }
+  
+  if (!validateCredentials(credentials.user, credentials.pass)) {
     res.set('WWW-Authenticate', 'Basic realm="Admin Panel"');
     res.status(401).json({
       success: false,
