@@ -5,9 +5,9 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node",
+    "dev": "bun run --watch ../backend/src/index.ts",
+    "start": "bun run ../backend/src/index.ts",
+    "build": "bun build ../backend/src/index.ts --outdir dist --target node",
     "test": "echo \"No tests configured\""
   },
   "dependencies": {

@@ -49,16 +49,18 @@ OPENCODE_API_KEY=tu_api_key_aqui
 ## Uso
 
 ```bash
-# Iniciar servidor de desarrollo
-cd backend
-bun run dev
+# Iniciar servidor (desde la raíz del proyecto)
+bun run start
 
-# El servidor estará en http://localhost:3000
+# O con watch para desarrollo
+bun run start:watch
 ```
+
+El servidor cargará las variables del `.env` en la raíz.
 
 ## Panel Admin
 
-Acceder a `http://localhost:3000/admin` y usar las credenciales del `.env` para autenticación Basic Auth.
+Acceder a `http://localhost:\${PORT}/admin` (default 4000) y usar las credenciales del `.env` para autenticación Basic Auth.
 
 ## API Endpoints
 

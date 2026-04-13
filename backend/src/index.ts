@@ -1,6 +1,7 @@
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config';
 import { mkdir } from 'fs/promises';
 import path from 'path';
 
