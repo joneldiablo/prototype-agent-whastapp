@@ -10,8 +10,7 @@
   "scripts": {
     "dev": "concurrently \"yarn workspace backend-dev dev\" \"yarn workspace frontend-dev dev\"",
     "build": "yarn workspace backend-dev build && yarn workspace frontend-dev build",
-    "start": "bun run backend/src/index.ts",
-    "start:watch": "bun run --watch backend/src/index.ts"
+    "start": "node scripts/start.js"
   },
   "keywords": ["whatsapp", "opencode", "big-pickle", "agent", "api"],
   "author": "joneldiablo",
