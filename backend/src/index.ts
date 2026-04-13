@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 import express from 'express';
 import cors from 'cors';
+import basicAuth from 'express-basic-auth';
 import { mkdir } from 'fs/promises';
 import path from 'path';
 
@@ -12,6 +13,10 @@ import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './
 import { chatWithBigPickle, isOpenCodeConfigured } from './services/opencode.js';
 import { initDb, getWhitelist, getConfig, logMessage } from './db/index.js';
 
+const ADMIN_USER_PASS = (process.env.OPENCODE_USER_PASSWORD || 'admin:password123').split(':');
+const adminUser = ADMIN_USER_PASS[0];
+const adminPass = ADMIN_USER_PASS[1];
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -20,6 +25,23 @@ await initDb();
 
 app.use(cors());
 app.use(express.json());
+
+app.use((req, _res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url}`);
+  console.log(`[REQ] Headers:`, JSON.stringify(req.headers, null, 2));
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log(`[REQ] Body:`, JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
+const authMiddleware = basicAuth({
+  users: { [adminUser]: adminPass },
+  challenge: true,
+});
+
+app.use('/api/whitelist', authMiddleware, whitelistRoutes);
+app.use('/api/config', authMiddleware, configRoutes);
 
 async function handleIncomingMessage(from: string, message: string) {
   if (!isOpenCodeConfigured()) {
