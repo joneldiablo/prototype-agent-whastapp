@@ -8,7 +8,6 @@ import path from 'path';
 import whatsappRoutes from './routes/whatsapp.js';
 import whitelistRoutes from './routes/whitelist.js';
 import configRoutes from './routes/config.js';
-import { basicAuth } from './middleware/auth.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './services/whatsapp.js';
 import { chatWithBigPickle, isOpenCodeConfigured } from './services/opencode.js';
 import { initDb, getWhitelist, getConfig, logMessage } from './db/index.js';
@@ -77,9 +76,9 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/whatsapp', whatsappRoutes);
 
-app.use('/api/whitelist', basicAuth, whitelistRoutes);
+app.use('/api/whitelist', whitelistRoutes);
 
-app.use('/api/config', basicAuth, configRoutes);
+app.use('/api/config', configRoutes);
 
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(import.meta.dir, '../../frontend/index.html'));
