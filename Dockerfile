@@ -64,7 +64,10 @@ RUN bun install
 RUN bun x puppeteer browsers install chrome
 
 # Crear directorio para sesiones de WhatsApp
-RUN mkdir -p data/whatsapp-sessions
+RUN mkdir -p data/whatsapp-sessions data/.wwebjs_cache
+
+# Crear symlink para mover el cache de Puppeteer a data
+RUN ln -sf data/.wwebjs_cache .wwebjs_cache
 
 # Exponer puerto
 EXPOSE 4000

@@ -18,7 +18,6 @@ async function initClient(): Promise<Client> {
     }),
     puppeteer: {
       headless: true,
-      userDataDir: './data/.wwebjs_cache',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
