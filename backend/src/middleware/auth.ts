@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 
-const ADMIN_CREDENTIALS = process.env.OPENCODE_USER_PASSWORD || 'admin:password123';
+const ADMIN_CREDENTIALS = (process.env.OPENCODE_USER_PASSWORD || 'admin:password123').split(':');
+const EXPECTED_USER = ADMIN_CREDENTIALS[0];
+const EXPECTED_PASS = ADMIN_CREDENTIALS[1];
 
 function parseBasicAuth(authHeader: string | undefined): { user: string; pass: string } | null {
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -21,28 +23,11 @@ function parseBasicAuth(authHeader: string | undefined): { user: string; pass: s
   };
 }
 
-function validateCredentials(user: string, pass: string): boolean {
-  const [expectedUser, expectedPass] = ADMIN_CREDENTIALS.split(':');
-  return user === expectedUser && pass === expectedPass;
-}
-
 export function basicAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const credentials = parseBasicAuth(authHeader);
   
-  if (!credentials) {
-    res.set('WWW-Authenticate', 'Basic realm="Admin Panel"');
-    res.status(401).json({
-      success: false,
-      error: true,
-      status: 401,
-      code: 401,
-      message: 'Unauthorized: Credenciales inválidas',
-    });
-    return;
-  }
-  
-  if (!validateCredentials(credentials.user, credentials.pass)) {
+  if (!credentials || credentials.user !== EXPECTED_USER || credentials.pass !== EXPECTED_PASS) {
     res.set('WWW-Authenticate', 'Basic realm="Admin Panel"');
     res.status(401).json({
       success: false,
