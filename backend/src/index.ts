@@ -10,12 +10,13 @@ import configRoutes from './routes/config.js';
 import { basicAuth } from './middleware/auth.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './services/whatsapp.js';
 import { chatWithBigPickle, isOpenCodeConfigured } from './services/opencode.js';
-import { getWhitelist, getConfig, logMessage } from './db/index.js';
+import { initDb, getWhitelist, getConfig, logMessage } from './db/index.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 await mkdir('./data', { recursive: true });
+await initDb();
 
 app.use(cors());
 app.use(express.json());

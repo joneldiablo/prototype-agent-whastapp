@@ -42,7 +42,7 @@ Editar `backend/.env`:
 
 ```
 PORT=3000
-OPENCOD_USER_PASSWORD=admin:password123
+OPENCODE_USER_PASSWORD=admin:password123
 OPENCODE_API_KEY=tu_api_key_aqui
 ```
 

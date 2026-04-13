@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
-const ADMIN_CREDENTIALS = process.env.OPENCOD_USER_PASSWORD || 'admin:password123';
+const ADMIN_CREDENTIALS = process.env.OPENCODE_USER_PASSWORD || 'admin:password123';
 
 function parseBasicAuth(authHeader: string | undefined): { user: string; pass: string } | null {
   if (!authHeader || !authHeader.startsWith('Basic ')) {

@@ -1,53 +1,93 @@
-import Database from 'better-sqlite3';
+import initSqlJs, { Database } from 'sql.js';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 
+let db: Database | null = null;
 const dbPath = path.join(import.meta.dir, '../../data/whatsapp.db');
-const db = new Database(dbPath);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS whitelist (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    phone TEXT NOT NULL UNIQUE,
-    prompt TEXT,
-    enabled INTEGER DEFAULT 1,
-    is_blacklist INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+export async function initDb(): Promise<Database> {
+  if (db) return db;
 
-  CREATE TABLE IF NOT EXISTS system_config (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key TEXT NOT NULL UNIQUE,
-    value TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  const SQL = await initSqlJs();
 
-  CREATE TABLE IF NOT EXISTS messages_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_number TEXT NOT NULL,
-    message TEXT NOT NULL,
-    response TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
+  await mkdir(path.dirname(dbPath), { recursive: true });
 
-const initConfig = db.prepare('INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)');
-initConfig.run('system_prompt', 'Eres un asistente útil y amigable. Responde de manera concisa.');
-initConfig.run('whatsapp_connected', 'false');
+  try {
+    const data = await readFile(dbPath);
+    db = new SQL.Database(data);
+  } catch {
+    db = new SQL.Database();
+  }
 
-export default db;
+  db.run(`
+    CREATE TABLE IF NOT EXISTS whitelist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL UNIQUE,
+      prompt TEXT,
+      enabled INTEGER DEFAULT 1,
+      is_blacklist INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS system_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      value TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS messages_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_number TEXT NOT NULL,
+      message TEXT NOT NULL,
+      response TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  const configCheck = db.exec("SELECT COUNT(*) as count FROM system_config WHERE key = 'system_prompt'");
+  if (configCheck[0]?.values[0]?.[0] === 0) {
+    db.run("INSERT INTO system_config (key, value) VALUES ('system_prompt', 'Eres un asistente útil y amigable. Responde de manera concisa.')");
+    db.run("INSERT INTO system_config (key, value) VALUES ('whatsapp_connected', 'false')");
+  }
+
+  saveDb();
+  return db;
+}
+
+function saveDb() {
+  if (!db) return;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  writeFile(dbPath, buffer).catch(console.error);
+}
 
 export function getWhitelist() {
-  return db.prepare('SELECT * FROM whitelist ORDER BY created_at DESC').all();
+  if (!db) return [];
+  const result = db.exec('SELECT * FROM whitelist ORDER BY created_at DESC');
+  if (!result[0]) return [];
+  
+  const columns = result[0].columns;
+  return result[0].values.map(row => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => obj[col] = row[i]);
+    return obj;
+  });
 }
 
 export function addToWhitelist(phone: string, prompt?: string) {
-  const stmt = db.prepare('INSERT INTO whitelist (phone, prompt) VALUES (?, ?)');
-  return stmt.run(phone, prompt || null);
+  if (!db) return { lastInsertRowid: 0, changes: 0 };
+  db.run('INSERT INTO whitelist (phone, prompt) VALUES (?, ?)', [phone, prompt || null]);
+  const result = db.exec('SELECT last_insert_rowid() as id');
+  saveDb();
+  return { lastInsertRowid: result[0]?.values[0]?.[0] || 0, changes: 1 };
 }
 
 export function updateWhitelistEntry(id: number, data: { phone?: string; prompt?: string; enabled?: boolean; is_blacklist?: boolean }) {
+  if (!db) return { changes: 0 };
+  
   const updates: string[] = [];
   const values: unknown[] = [];
   
@@ -61,26 +101,47 @@ export function updateWhitelistEntry(id: number, data: { phone?: string; prompt?
   updates.push('updated_at = CURRENT_TIMESTAMP');
   values.push(id);
   
-  return db.prepare(`UPDATE whitelist SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.run(`UPDATE whitelist SET ${updates.join(', ')} WHERE id = ?`, values);
+  saveDb();
+  return { changes: db.getRowsModified() };
 }
 
 export function deleteFromWhitelist(id: number) {
-  return db.prepare('DELETE FROM whitelist WHERE id = ?').run(id);
+  if (!db) return { changes: 0 };
+  db.run('DELETE FROM whitelist WHERE id = ?', [id]);
+  saveDb();
+  return { changes: db.getRowsModified() };
 }
 
 export function getConfig(key: string): string | null {
-  const row = db.prepare('SELECT value FROM system_config WHERE key = ?').get(key) as { value: string } | undefined;
-  return row?.value ?? null;
+  if (!db) return null;
+  const result = db.exec('SELECT value FROM system_config WHERE key = ?', [key]);
+  return result[0]?.values[0]?.[0] as string || null;
 }
 
 export function setConfig(key: string, value: string) {
-  return db.prepare('INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(key, value);
+  if (!db) return;
+  db.run('INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)', [key, value]);
+  saveDb();
 }
 
 export function logMessage(from: string, message: string, response?: string) {
-  return db.prepare('INSERT INTO messages_log (from_number, message, response) VALUES (?, ?, ?)').run(from, message, response || null);
+  if (!db) return;
+  db.run('INSERT INTO messages_log (from_number, message, response) VALUES (?, ?, ?)', [from, message, response || null]);
+  saveDb();
 }
 
 export function getMessagesLog(limit = 50) {
-  return db.prepare('SELECT * FROM messages_log ORDER BY timestamp DESC LIMIT ?').all(limit);
+  if (!db) return [];
+  const result = db.exec('SELECT * FROM messages_log ORDER BY timestamp DESC LIMIT ?', [limit]);
+  if (!result[0]) return [];
+  
+  const columns = result[0].columns;
+  return result[0].values.map(row => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => obj[col] = row[i]);
+    return obj;
+  });
 }
+
+export default { initDb, getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, getConfig, setConfig, logMessage, getMessagesLog };

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { ApiResponse } from '../types/index.js';
-import { getConfig, setConfig } from '../db/index.js';
+import { getConfig, setConfig, getMessagesLog } from '../db/index.js';
 
 const router = Router();
 
@@ -41,7 +41,6 @@ router.put('/system-prompt', (req: Request<Record<string, never>, unknown, { pro
 });
 
 router.get('/messages', (_req, res: Response<ApiResponse>) => {
-  const { getMessagesLog } = require('../db/index.js');
   const messages = getMessagesLog();
   res.json({
     success: true,
