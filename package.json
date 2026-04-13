@@ -1,0 +1,18 @@
+{
+  "name": "prototype-agent-whatsapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prototipo de comunicación WhatsApp con agente Big Pickle de OpenCode",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"yarn workspace backend-dev dev\" \"yarn workspace frontend-dev dev\"",
+    "build": "yarn workspace backend-dev build && yarn workspace frontend-dev build",
+    "start": "yarn workspace backend-dev start"
+  },
+  "keywords": ["whatsapp", "opencode", "big-pickle", "agent", "api"],
+  "author": "joneldiablo",
+  "license": "ISC"
+}

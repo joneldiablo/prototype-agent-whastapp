@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Agent Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    h1 { color: #1a1a1a; margin-bottom: 20px; }
+    h2 { color: #333; margin: 20px 0 10px; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 500; }
+    .status-connected { background: #d4edda; color: #155724; }
+    .status-disconnected { background: #f8d7da; color: #721c24; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-right: 10px; }
+    .btn-primary { background: #007bff; color: white; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-success { background: #28a745; color: white; }
+    .btn:hover { opacity: 0.9; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: 500; color: #333; }
+    input[type="text"], input[type="checkbox"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+    input[type="checkbox"] { width: auto; }
+    textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 100px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f8f9fa; font-weight: 600; }
+    .qr-container { text-align: center; margin: 20px 0; }
+    .qr-container img { max-width: 300px; }
+    .actions { display: flex; gap: 10px; }
+    .hidden { display: none; }
+    .error { color: #dc3545; margin-top: 10px; }
+    .success { color: #28a745; margin-top: 10px; }
+    .loading { opacity: 0.5; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>WhatsApp Agent Admin</h1>
+    
+    <div class="card">
+      <h2>Estado de WhatsApp</h2>
+      <p>Estado: <span id="wa-status" class="status-badge status-disconnected">Desconectado</span></p>
+      <p>Teléfono: <span id="wa-phone">-</span></p>
+      <div class="qr-container" id="qr-container"></div>
+      <button class="btn btn-primary" id="btn-connect">Conectar WhatsApp</button>
+      <button class="btn btn-danger" id="btn-disconnect" disabled>Desconectar</button>
+    </div>
+
+    <div class="card">
+      <h2>Prompt del Sistema</h2>
+      <div class="form-group">
+        <textarea id="system-prompt" rows="4" placeholder="Ingresa el prompt global del sistema..."></textarea>
+      </div>
+      <button class="btn btn-primary" id="btn-save-prompt">Guardar Prompt</button>
+      <span id="prompt-message"></span>
+    </div>
+
+    <div class="card">
+      <h2>Lista Blanca / Negra</h2>
+      <div class="form-group">
+        <input type="text" id="new-phone" placeholder="Número de teléfono (ej: +1234567890)">
+      </div>
+      <div class="form-group">
+        <input type="text" id="new-prompt" placeholder="Prompt personalizado (opcional)">
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="new-is-blacklist"> Agregar a lista negra
+        </label>
+      </div>
+      <button class="btn btn-primary" id="btn-add">Agregar</button>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Teléfono</th>
+            <th>Prompt</th>
+            <th>Tipo</th>
+            <th>Habilitado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="whitelist-table"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Mensajes Recibidos</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>De</th>
+            <th>Mensaje</th>
+            <th>Respuesta</th>
+            <th>Hora</th>
+          </tr>
+        </thead>
+        <tbody id="messages-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    let authHeader = btoa('admin:password123');
+
+    function getHeaders() {
+      return { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` };
+    }
+
+    async function checkStatus() {
+      try {
+        const res = await fetch(`${API_BASE}/api/whatsapp/status`);
+        const data = await res.json();
+        const badge = document.getElementById('wa-status');
+        const phone = document.getElementById('wa-phone');
+        const qrContainer = document.getElementById('qr-container');
+        const btnConnect = document.getElementById('btn-connect');
+        const btnDisconnect = document.getElementById('btn-disconnect');
+
+        if (data.data?.connected) {
+          badge.textContent = 'Conectado';
+          badge.className = 'status-badge status-connected';
+          phone.textContent = data.data.phone || '-';
+          qrContainer.innerHTML = '';
+          btnConnect.disabled = true;
+          btnDisconnect.disabled = false;
+        } else {
+          badge.textContent = 'Desconectado';
+          badge.className = 'status-badge status-disconnected';
+          phone.textContent = '-';
+          btnConnect.disabled = false;
+          btnDisconnect.disabled = true;
+          if (data.data?.qr) {
+            qrContainer.innerHTML = `<img src="${data.data.qr}" alt="QR Code">`;
+          }
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadSystemPrompt() {
+      try {
+        const res = await fetch(`${API_BASE}/api/config/system-prompt`, { headers: getHeaders() });
+        const data = await res.json();
+        if (data.success && data.data?.prompt) {
+          document.getElementById('system-prompt').value = data.data.prompt;
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadWhitelist() {
+      try {
+        const res = await fetch(`${API_BASE}/api/whitelist`, { headers: getHeaders() });
+        const data = await res.json();
+        const tbody = document.getElementById('whitelist-table');
+        tbody.innerHTML = '';
+        
+        if (data.success && data.data) {
+          data.data.forEach(entry => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${entry.phone}</td>
+              <td>${entry.prompt || '-'}</td>
+              <td>${entry.is_blacklist ? 'Lista Negra' : 'Lista Blanca'}</td>
+              <td><input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="updateEntry(${entry.id}, 'enabled', this.checked)"></td>
+              <td>
+                <button class="btn btn-danger" onclick="deleteEntry(${entry.id})">Eliminar</button>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadMessages() {
+      try {
+        const res = await fetch(`${API_BASE}/api/config/messages`, { headers: getHeaders() });
+        const data = await res.json();
+        const tbody = document.getElementById('messages-table');
+        tbody.innerHTML = '';
+        
+        if (data.success && data.data) {
+          data.data.forEach(msg => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${msg.from_number}</td>
+              <td>${msg.message}</td>
+              <td>${msg.response || '-'}</td>
+              <td>${new Date(msg.timestamp).toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    document.getElementById('btn-connect').addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/whatsapp/connect`, { method: 'POST' });
+        await res.json();
+        checkStatus();
+      } catch (e) { console.error(e); }
+    });
+
+    document.getElementById('btn-disconnect').addEventListener('click', async () => {
+      try {
+        await fetch(`${API_BASE}/api/whatsapp/disconnect`, { method: 'POST' });
+        checkStatus();
+      } catch (e) { console.error(e); }
+    });
+
+    document.getElementById('btn-save-prompt').addEventListener('click', async () => {
+      const prompt = document.getElementById('system-prompt').value;
+      try {
+        const res = await fetch(`${API_BASE}/api/config/system-prompt`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify({ prompt })
+        });
+        const data = await res.json();
+        const msg = document.getElementById('prompt-message');
+        msg.textContent = data.success ? 'Guardado correctamente' : data.message;
+        msg.className = data.success ? 'success' : 'error';
+      } catch (e) { console.error(e); }
+    });
+
+    document.getElementById('btn-add').addEventListener('click', async () => {
+      const phone = document.getElementById('new-phone').value;
+      const prompt = document.getElementById('new-prompt').value;
+      const is_blacklist = document.getElementById('new-is-blacklist').checked;
+      
+      if (!phone) return alert('El teléfono es requerido');
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/whitelist`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ phone, prompt, is_blacklist })
+        });
+        await res.json();
+        document.getElementById('new-phone').value = '';
+        document.getElementById('new-prompt').value = '';
+        loadWhitelist();
+      } catch (e) { console.error(e); }
+    });
+
+    window.updateEntry = async (id, field, value) => {
+      try {
+        await fetch(`${API_BASE}/api/whitelist/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify({ [field]: value })
+        });
+      } catch (e) { console.error(e); }
+    };
+
+    window.deleteEntry = async (id) => {
+      if (!confirm('¿Eliminar esta entrada?')) return;
+      try {
+        await fetch(`${API_BASE}/api/whitelist/${id}`, { method: 'DELETE', headers: getHeaders() });
+        loadWhitelist();
+      } catch (e) { console.error(e); }
+    };
+
+    setInterval(checkStatus, 5000);
+    checkStatus();
+    loadSystemPrompt();
+    loadWhitelist();
+    loadMessages();
+  </script>
+</body>
+</html>
