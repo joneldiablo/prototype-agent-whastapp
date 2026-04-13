@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 import type { ApiResponse } from '../types/index.js';
-import { getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, generateQR } from '../services/whatsapp.js';
+import { getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getQR } from '../services/whatsapp.js';
 
 const router = Router();
 
@@ -25,7 +25,7 @@ router.post('/connect', async (_req, res: Response<ApiResponse>) => {
       error: false,
       status: 200,
       code: 200,
-      message: 'Conectando WhatsApp',
+      message: status.connected ? 'WhatsApp conectado' : 'Conectando WhatsApp...',
       data: status,
     });
   } catch (error) {
@@ -39,26 +39,36 @@ router.post('/connect', async (_req, res: Response<ApiResponse>) => {
   }
 });
 
-router.post('/disconnect', (_req, res: Response<ApiResponse>) => {
-  disconnectWhatsApp();
-  res.json({
-    success: true,
-    error: false,
-    status: 200,
-    code: 200,
-    message: 'WhatsApp desconectado',
-  });
-});
-
-router.get('/qr', async (_req, res: Response<ApiResponse>) => {
+router.post('/disconnect', async (_req, res: Response<ApiResponse>) => {
   try {
-    const qr = await generateQR();
+    await disconnectWhatsApp();
     res.json({
       success: true,
       error: false,
       status: 200,
       code: 200,
-      message: 'QR generado',
+      message: 'WhatsApp desconectado',
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: true,
+      status: 500,
+      code: 500,
+      message: error instanceof Error ? error.message : 'Error al desconectar',
+    });
+  }
+});
+
+router.get('/qr', async (_req, res: Response<ApiResponse>) => {
+  try {
+    const qr = await getQR();
+    res.json({
+      success: true,
+      error: false,
+      status: 200,
+      code: 200,
+      message: qr ? 'QR disponible' : 'Generando QR...',
       data: { qr },
     });
   } catch (error) {
