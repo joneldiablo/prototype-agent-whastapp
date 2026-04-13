@@ -50,10 +50,7 @@ OPENCODE_API_KEY=tu_api_key_aqui
 
 ```bash
 # Iniciar servidor (desde la raíz del proyecto)
-bun run start
-
-# O con watch para desarrollo
-bun run start:watch
+yarn start
 ```
 
 El servidor cargará las variables del `.env` en la raíz.

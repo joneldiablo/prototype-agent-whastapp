@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "prototype-agent-whatsapp",
+      "dependencies": {
+        "dotenv": "^16.4.0",
+      },
     },
     "backend": {
       "name": "backend-dev",
