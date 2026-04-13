@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  whatsapp-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUN_VERSION: latest
+    container_name: whatsapp-agent
+    ports:
+      - "${PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-4000}
+      WATCH: "false"
+      OPENCODE_USER_PASSWORD: ${OPENCODE_USER_PASSWORD:-}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /root/.cache/puppeteer/chrome/linux-*/chrome-linux/chrome
+    hostname: whatsapp-agent
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - whatsapp-network
+    
+    volumes:
+      - whatsapp-sessions:/app/data/whatsapp-sessions
+      - whatsapp-data:/app/data
+    
+    restart: unless-stopped
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/whatsapp/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  whatsapp-network:
+    driver: bridge
+
+volumes:
+  whatsapp-sessions:
+    driver: local
+  whatsapp-data:
+    driver: local

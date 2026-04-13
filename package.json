@@ -17,5 +17,8 @@
   },
   "keywords": ["whatsapp", "opencode", "big-pickle", "agent", "api"],
   "author": "joneldiablo",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "puppeteer": "^24.40.0"
+  }
 }

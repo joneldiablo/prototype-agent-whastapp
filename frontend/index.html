@@ -107,6 +107,7 @@
 
   <script>
     const API_BASE = '';
+    let connectionTimeout;
 
     function getHeaders() {
       return { 'Content-Type': 'application/json' };
@@ -128,12 +129,14 @@
           phone.textContent = data.data.phone || '-';
           qrContainer.innerHTML = '';
           btnConnect.disabled = true;
+          btnConnect.textContent = 'Conectar WhatsApp';
           btnDisconnect.disabled = false;
         } else {
           badge.textContent = 'Desconectado';
           badge.className = 'status-badge status-disconnected';
           phone.textContent = '-';
           btnConnect.disabled = false;
+          btnConnect.textContent = 'Conectar WhatsApp';
           btnDisconnect.disabled = true;
           if (data.data?.qr) {
             qrContainer.innerHTML = `<img src="${data.data.qr}" alt="QR Code">`;
@@ -200,16 +203,40 @@
     }
 
     document.getElementById('btn-connect').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-connect');
+      const qrContainer = document.getElementById('qr-container');
+      btn.disabled = true;
+      btn.textContent = 'Conectando...';
+      qrContainer.innerHTML = '<p>Generando QR...</p>';
+      
       try {
         const res = await fetch(`${API_BASE}/api/whatsapp/connect`, { method: 'POST' });
         await res.json();
+        
+        // Acelerar el polling mientras se conecta
+        clearInterval(connectionTimeout);
+        connectionTimeout = setInterval(checkStatus, 1000);
+        
+        // Detener el polling acelerado en 60 segundos
+        setTimeout(() => {
+          clearInterval(connectionTimeout);
+          connectionTimeout = setInterval(checkStatus, 5000);
+        }, 60000);
+        
         checkStatus();
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+        console.error(e);
+        btn.disabled = false;
+        btn.textContent = 'Conectar WhatsApp';
+        qrContainer.innerHTML = '';
+      }
     });
 
     document.getElementById('btn-disconnect').addEventListener('click', async () => {
       try {
+        clearInterval(connectionTimeout);
         await fetch(`${API_BASE}/api/whatsapp/disconnect`, { method: 'POST' });
+        statusCheckInterval = setInterval(checkStatus, 5000);
         checkStatus();
       } catch (e) { console.error(e); }
     });
@@ -267,7 +294,7 @@
       } catch (e) { console.error(e); }
     };
 
-    setInterval(checkStatus, 5000);
+    let statusCheckInterval = setInterval(checkStatus, 5000);
     checkStatus();
     loadSystemPrompt();
     loadWhitelist();

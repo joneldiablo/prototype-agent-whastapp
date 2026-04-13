@@ -28,12 +28,53 @@ Sistema que conecta WhatsApp con el modelo Big Pickle de OpenCode para automatiz
 
 ## Instalación
 
+### Instalación de Bun
+
+**IMPORTANTE**: No installes Bun usando `snap` en Linux. La versión de snap encapsula Bun y causa conflictos con Puppeteer/Chromium. Instala Bun directamente desde el script oficial:
+
 ```bash
+# Verificar si tienes Bun instalado por snap
+which bun || snap list | grep bun
+
+# Si está instalado via snap, removerlo primero
+sudo snap remove bun-js
+
+# Instalar Bun correctamente
+curl -fsSL https://bun.sh/install | bash
+
+# Cargarlo en el shell actual
+source ~/.bashrc
+
+# Verificar instalación
+bun -v
+```
+
+### Instalar dependencias
+
+```bash
+# Remover node_modules si existe (por si hay conflictos)
+rm -rf node_modules
+
 # Instalar dependencias
 bun install
 
-# O usar yarn si prefieres
-yarn install
+# Instalar navegador Chromium para Puppeteer
+bun x puppeteer browsers install chrome
+```
+
+### Docker
+
+Para ejecutar el proyecto isolado usando Docker:
+
+```bash
+# Construir imagen
+docker build -t whatsapp-agent .
+
+# O usar docker-compose
+docker-compose up -d
+
+# Ver logs
+docker-compose logs -f
 ```
 
 ## Configuración
