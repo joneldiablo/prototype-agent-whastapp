@@ -9,41 +9,43 @@ Sistema que conecta WhatsApp con el modelo Big Pickle de OpenCode para automatiz
 ## Estructura
 
 ```
-├── backend/          # API REST con Express + SQLite
+prototype-agent-whastapp/
+├── backend/                 # API REST con Express + SQLite
 │   ├── src/
-│   │   ├── routes/   # Endpoints API
-│   │   ├── services/ # WhatsApp y OpenCode
-│   │   ├── db/       # Base de datos SQLite
-│   │   └── types/    # TypeScript types
-│   └── .env          # Configuración
-├── frontend/         # Panel administrativo SPA
-├── agents/           # Documentación para agentes
-└── package.json      # Workspace root
+│   │   ├── routes/        # Endpoints API
+│   │   ├── services/       # WhatsApp y OpenCode
+│   │   ├── db/            # Base de datos SQLite
+│   │   ├── middleware/    # Middleware Express
+│   │   ├── types/         # Tipos TypeScript
+│   │   └── index.ts       # Punto de entrada
+│   ├── package.json
+│   └── .env
+├── frontend/               # Panel administrativo SPA
+├── scripts/               # Scripts de inicio
+├── package.json           # Workspace root
+└── .env                  # Configuración
 ```
 
 ## Requisitos
 
-- Bun (gestor de paquetes y runtime)
-- Node.js (alternativo)
+- **Runtime**: Bun (gestor de paquetes y runtime)
+- **Navegador**: Chromium para Puppeteer
 
 ## Instalación
 
-### Instalación de Bun
+### Instalar Bun
 
-**IMPORTANTE**: No installes Bun usando `snap` en Linux. La versión de snap encapsula Bun y causa conflictos con Puppeteer/Chromium. Instala Bun directamente desde el script oficial:
+**IMPORTANTE**: No instales Bun usando `snap` en Linux. La versión de snap encapsula Bun y causa conflictos con Puppeteer/Chromium.
 
 ```bash
-# Verificar si tienes Bun instalado por snap
-which bun || snap list | grep bun
+# Verificar si tienes Bun instalado
+which bun
 
 # Si está instalado via snap, removerlo primero
 sudo snap remove bun-js
 
 # Instalar Bun correctamente
 curl -fsSL https://bun.sh/install | bash
-
-# Cargarlo en el shell actual
-source ~/.bashrc
 
 # Verificar instalación
 bun -v
@@ -52,72 +54,99 @@ bun -v
 ### Instalar dependencias
 
 ```bash
-# Remover node_modules si existe (por si hay conflictos)
-rm -rf node_modules
-
-# Instalar dependencias
+# Instalar dependencias del workspace
 bun install
 
-# Instalar navegador Chromium para Puppeteer
+# Instalar Chromium para Puppeteer
 bun x puppeteer browsers install chrome
 ```
 
-### Docker
+### Configuración
 
-Para ejecutar el proyecto isolado usando Docker:
+Editar `.env`:
 
 ```bash
-# Construir imagen
-docker build -t whatsapp-agent .
+# Puerto del servidor
+PORT=4000
 
-# O usar docker-compose
-docker-compose up -d
+# Entorno: development o production
+NODE_ENV=development
 
-# Ver logs
-docker-compose logs -f
-```
+# Modo watch
+WATCH=true
 
-## Configuración
-
-Editar `backend/.env`:
-
-```
-PORT=3000
+# Credenciales admin (formato: usuario:contraseña)
 OPENCODE_USER_PASSWORD=admin:password123
+
+# API Key de OpenCode
 OPENCODE_API_KEY=tu_api_key_aqui
+
+# Puerto de OpenCode
+OPENCODE_PORT=4099
+
+# Máximo de caracteres para contexto
+MAX_CONTEXT_CHARS=80000
 ```
 
 ## Uso
 
 ```bash
-# Iniciar servidor (desde la raíz del proyecto)
+# Iniciar servidor (desde la raíz)
 yarn start
+
+# O directamente con bun
+bun run scripts/start.js
 ```
 
 El servidor cargará las variables del `.env` en la raíz.
 
-## Panel Admin
+## Variables de Entorno
 
-Acceder a `http://localhost:\${PORT}/admin` (default 4000) y usar las credenciales del `.env` para autenticación Basic Auth.
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `PORT` | 3000 | Puerto del servidor HTTP |
+| `NODE_ENV` | development | Entorno (development/production) |
+| `WATCH` | false | Modo watch (auto-reload) |
+| `OPENCODE_USER_PASSWORD` | admin:password123 | Credenciales admin |
+| `OPENCODE_API_KEY` | - | API Key de OpenCode |
+| `OPENCODE_PORT` | 4099 | Puerto del servidor OpenCode |
+| `OPENCODE_BASE_URL` | https://opencode.ai | URL base OpenCode |
 
 ## API Endpoints
 
-### WhatsApp
-- `GET /api/whatsapp/status` - Estado de conexión
-- `POST /api/whatsapp/connect` - Iniciar conexión
-- `POST /api/whatsapp/disconnect` - Desconectar
-- `GET /api/whatsapp/qr` - Obtener QR
+### WhatsApp (públicos)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/whatsapp/status` | Estado de conexión |
+| POST | `/api/whatsapp/connect` | Iniciar conexión |
+| POST | `/api/whatsapp/disconnect` | Desconectar |
+| GET | `/api/whatsapp/qr` | Obtener QR |
 
 ### Whitelist (requiere auth)
-- `GET /api/whitelist` - Listar entradas
-- `POST /api/whitelist` - Agregar entrada
-- `PUT /api/whitelist/:id` - Actualizar entrada
-- `DELETE /api/whitelist/:id` - Eliminar entrada
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/whitelist` | Listar entradas |
+| POST | `/api/whitelist` | Agregar entrada |
+| PUT | `/api/whitelist/:id` | Actualizar entrada |
+| DELETE | `/api/whitelist/:id` | Eliminar entrada |
 
 ### Config (requiere auth)
-- `GET /api/config/system-prompt` - Obtener prompt global
-- `PUT /api/config/system-prompt` - Actualizar prompt global
-- `GET /api/config/messages` - Ver historial de mensajes
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/config/system-prompt` | Obtener prompt global |
+| PUT | `/api/config/system-prompt` | Actualizar prompt global |
+| GET | `/api/config/messages` | Ver historial de mensajes |
+
+### Sistema
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/admin` | Panel administrativo |
+| GET | `/` | Redirecciona a /admin |
 
 ## Formato de Respuesta API
 
@@ -132,15 +161,74 @@ Acceder a `http://localhost:\${PORT}/admin` (default 4000) y usar las credencial
 }
 ```
 
-## Tecnologías
+## Arquitectura
 
-- **Backend**: Express, SQLite (better-sqlite3), Bun
-- **Frontend**: Vanilla JS + HTML
-- **WhatsApp**: webwhatsappjs (a implementar)
-- **AI**: OpenCode Big Pickle API
+### Servicios
+
+- **WhatsApp Service** (`services/whatsapp.ts`): Maneja conexión con WhatsApp Web
+- **OpenCode Service** (`services/opencode.ts`): Maneja comunicación con OpenCode
+- **Database** (`db/index.ts`): SQLite para persistencia
+
+### Principios SOLID Aplicados
+
+- **S**ingle Responsibility: Cada función tiene una responsabilidad
+- **O**pen/Closed: Abierto para extensión, cerrado para modificación
+- **L**iskov Substitution: Interfaces coherentes
+- **I**nterface Segregation: Módulos pequeños
+- **D**ependency Inversion: Dependencia de abstracciones
+
+## Pruebas Unitarias
+
+```bash
+# Ejecutar pruebas (si están configuradas)
+bun test
+```
+
+## Logging
+
+El logging funciona según el entorno:
+
+- **development**: Muestra todos los logs
+- **production**: Solo errores esenciales
+
+## Docker
+
+```bash
+# Construir imagen
+docker build -t whatsapp-agent .
+
+# Ejecutar
+docker run -p 4000:4000 whatsapp-agent
+```
+
+## Dependencias
+
+### Runtime
+
+- `express` - Servidor HTTP
+- `cors` - CORS
+- `dotenv` - Variables de entorno
+- `whatsapp-web.js` - Cliente WhatsApp Web
+- `@opencode-ai/sdk` - SDK de OpenCode
+- `qrcode` - Generación QR
+- `puppeteer` - Navegador headless
+- `sql.js` - SQLite en memoria
+
+### Tipos
+
+- `@types/express`
+- `@types/cors`
+- `@types/qrcode`
+- `@types/sql.js`
 
 ## Notas de Desarrollo
 
 - Los endpoints de whitelist y config requieren Basic Auth
-- La contraseña se configura en .env formato "user:password"
+- La contraseña se configura en `.env` formato "usuario:contraseña"
 - El servidor crea automáticamente la base de datos SQLite en `backend/data/`
+- Las sesiones de WhatsApp se guardan en `data/whatsapp-sessions/`
+- OpenCode inicia en puerto 4099 por defecto (configurable)
+
+## Licencia
+
+MIT

@@ -45,6 +45,14 @@ export async function initDb(): Promise<Database> {
       response TEXT,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL UNIQUE,
+      opencode_session_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   const configCheck = db.exec("SELECT COUNT(*) as count FROM system_config WHERE key = 'system_prompt'");
@@ -52,6 +60,10 @@ export async function initDb(): Promise<Database> {
     db.run("INSERT INTO system_config (key, value) VALUES ('system_prompt', 'Eres un asistente útil y amigable. Responde de manera concisa.')");
     db.run("INSERT INTO system_config (key, value) VALUES ('whatsapp_connected', 'false')");
   }
+
+  // Seed: bloquear números y IDs no deseados
+  db.run("INSERT OR IGNORE INTO whitelist (phone, is_blacklist, enabled) VALUES ('status@broadcast', 1, 1)");
+  saveDb();
 
   saveDb();
   return db;
@@ -77,9 +89,9 @@ export function getWhitelist() {
   });
 }
 
-export function addToWhitelist(phone: string, prompt?: string) {
+export function addToWhitelist(phone: string, prompt?: string, isBlacklist = 0) {
   if (!db) return { lastInsertRowid: 0, changes: 0 };
-  db.run('INSERT INTO whitelist (phone, prompt) VALUES (?, ?)', [phone, prompt || null]);
+  db.run('INSERT INTO whitelist (phone, prompt, is_blacklist, enabled) VALUES (?, ?, ?, 1)', [phone, prompt || null, isBlacklist]);
   const result = db.exec('SELECT last_insert_rowid() as id');
   saveDb();
   return { lastInsertRowid: result[0]?.values[0]?.[0] || 0, changes: 1 };
@@ -144,4 +156,41 @@ export function getMessagesLog(limit = 50) {
   });
 }
 
-export default { initDb, getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, getConfig, setConfig, logMessage, getMessagesLog };
+export function getSessionByPhone(phone: string): { id: number; phone: string; opencode_session_id: string } | null {
+  if (!db) return null;
+  const result = db.exec('SELECT id, phone, opencode_session_id FROM sessions WHERE phone = ?', [phone]);
+  if (!result[0] || !result[0].values[0]) return null;
+  
+  const columns = result[0].columns;
+  const row = result[0].values[0];
+  const obj: Record<string, unknown> = {};
+  columns.forEach((col, i) => obj[col] = row[i]);
+  return obj as { id: number; phone: string; opencode_session_id: string };
+}
+
+export function createSession(phone: string, opencodeSessionId: string): { lastInsertRowid: number; changes: number } {
+  if (!db) return { lastInsertRowid: 0, changes: 0 };
+  db.run('INSERT INTO sessions (phone, opencode_session_id) VALUES (?, ?)', [phone, opencodeSessionId]);
+  const result = db.exec('SELECT last_insert_rowid() as id');
+  saveDb();
+  return { lastInsertRowid: result[0]?.values[0]?.[0] || 0, changes: 1 };
+}
+
+export function updateSessionPhone(phone: string, opencodeSessionId: string): { changes: number } {
+  if (!db) return { changes: 0 };
+  db.run('UPDATE sessions SET opencode_session_id = ?, updated_at = CURRENT_TIMESTAMP WHERE phone = ?', [opencodeSessionId, phone]);
+  saveDb();
+  return { changes: db.getRowsModified() };
+}
+
+/**
+ * Limpia la base de datos para testing.
+ */
+export async function clearDb() {
+  if (!db) return;
+  db.run('DELETE FROM whitelist');
+  db.run('DELETE FROM system_config');
+  db.run('DELETE FROM messages_log');
+  db.run('DELETE FROM sessions');
+  saveDb();
+}

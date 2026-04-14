@@ -10,10 +10,15 @@
   "scripts": {
     "dev": "concurrently \"yarn workspace backend-dev dev\" \"yarn workspace frontend-dev dev\"",
     "build": "yarn workspace backend-dev build && yarn workspace frontend-dev build",
-    "start": "bun run scripts/start.js"
+    "start": "bun run scripts/start.js",
+    "test": "yarn workspace backend-dev test",
+    "release": "./release.sh",
+    "release:backend": "dotenv -e .env -- yarn workspace backend-dev release"
   },
   "dependencies": {
-    "dotenv": "^16.4.0"
+    "@types/ws": "^8.5.10",
+    "dotenv": "^16.4.0",
+    "ws": "^8.20.0"
   },
   "keywords": ["whatsapp", "opencode", "big-pickle", "agent", "api"],
   "author": "joneldiablo",

@@ -17,8 +17,8 @@ router.get('/', (_req, res: Response<ApiResponse<WhitelistEntry[]>>) => {
   });
 });
 
-router.post('/', (req: Request<Record<string, never>, unknown, { phone: string; prompt?: string }>, res: Response<ApiResponse>) => {
-  const { phone, prompt } = req.body;
+router.post('/', (req: Request<Record<string, never>, unknown, { phone: string; prompt?: string; is_blacklist?: boolean }>, res: Response<ApiResponse>) => {
+  const { phone, prompt, is_blacklist } = req.body;
   
   if (!phone) {
     return res.json({
@@ -31,7 +31,7 @@ router.post('/', (req: Request<Record<string, never>, unknown, { phone: string; 
   }
   
   try {
-    const result = addToWhitelist(phone, prompt);
+    const result = addToWhitelist(phone, prompt, is_blacklist ? 1 : 0);
     res.json({
       success: true,
       error: false,

@@ -21,8 +21,9 @@
     .btn:hover { opacity: 0.9; }
     .form-group { margin-bottom: 15px; }
     label { display: block; margin-bottom: 5px; font-weight: 500; color: #333; }
-    input[type="text"], input[type="checkbox"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+    input[type="text"], input[type="password"], input[type="checkbox"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
     input[type="checkbox"] { width: auto; }
+    #login-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
     textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 100px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
@@ -37,8 +38,22 @@
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>WhatsApp Agent Admin</h1>
+  <!-- Login Modal -->
+  <div id="login-modal" class="card" style="max-width: 400px; margin: 50px auto; text-align: center;">
+    <h2>Iniciar Sesión</h2>
+    <div class="form-group">
+      <input type="text" id="login-user" placeholder="Usuario" style="width: 100%;">
+    </div>
+    <div class="form-group">
+      <input type="password" id="login-pass" placeholder="Contraseña" style="width: 100%;">
+    </div>
+    <button class="btn btn-primary" id="btn-login" style="width: 100%;">Entrar</button>
+    <p style="font-size: 12px; color: #666; margin-top: 10px;">Tus datos se guardan en el navegador</p>
+  </div>
+
+  <div class="container" id="main-content" style="display: none;">
+    <button onclick="doLogout()" style="float: right; font-size: 12px;">Cerrar Sesión</button>
+    <h1>WhatsApp Agent Admin <span id="sys-version" style="font-size: 14px; color: #666; font-weight: normal;"></span></h1>
     
     <div class="card">
       <h2>Estado de WhatsApp</h2>
@@ -59,19 +74,30 @@
     </div>
 
     <div class="card">
-      <h2>Lista Blanca / Negra</h2>
-      <div class="form-group">
-        <input type="text" id="new-phone" placeholder="Número de teléfono (ej: +1234567890)">
+      <h2>Gestión de Contactos</h2>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+        <div style="flex: 1; min-width: 200px;">
+          <input type="text" id="new-phone" placeholder="Número, contacto@algo o grupo@g.us" style="width: 100%;">
+        </div>
+        <div style="flex: 2; min-width: 300px;">
+          <input type="text" id="new-prompt" placeholder="Prompt personalizado (opcional) - leave empty for default" style="width: 100%;">
+        </div>
       </div>
-      <div class="form-group">
-        <input type="text" id="new-prompt" placeholder="Prompt personalizado (opcional)">
-      </div>
-      <div class="form-group">
-        <label>
-          <input type="checkbox" id="new-is-blacklist"> Agregar a lista negra
+      <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+          <input type="radio" name="new-type" value="whitelist" checked>
+          <span style="color: #28a745; font-weight: 500;">✓ Permitido</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; margin-left: 20px;">
+          <input type="radio" name="new-type" value="blacklist">
+          <span style="color: #dc3545; font-weight: 500;">✕ Bloqueado</span>
         </label>
       </div>
-      <button class="btn btn-primary" id="btn-add">Agregar</button>
+      <button class="btn btn-primary" id="btn-add">Agregar Contacto</button>
+      <p style="font-size: 12px; color: #666; margin-top: 10px;">
+        <b> Permitido:</b> Puede chatear con el agente | 
+        <b> Bloqueado:</b> No recibe respuestas (ignorado)
+      </p>
     </div>
 
     <div class="card">
@@ -80,8 +106,8 @@
           <tr>
             <th>Teléfono</th>
             <th>Prompt</th>
-            <th>Tipo</th>
-            <th>Habilitado</th>
+            <th>Estado</th>
+            <th>Activo</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -110,7 +136,34 @@
     let connectionTimeout;
 
     function getHeaders() {
-      return { 'Content-Type': 'application/json' };
+      const headers = { 'Content-Type': 'application/json' };
+      const user = localStorage.getItem('auth_user') || '';
+      const pass = localStorage.getItem('auth_pass') || '';
+      if (user && pass) {
+        headers['Authorization'] = 'Basic ' + btoa(user + ':' + pass);
+      }
+      return headers;
+    }
+
+    function login(user, pass) {
+      localStorage.setItem('auth_user', user);
+      localStorage.setItem('auth_pass', pass);
+    }
+
+    function logout() {
+      localStorage.removeItem('auth_user');
+      localStorage.removeItem('auth_pass');
+    }
+
+    function isLoggedIn() {
+      return !!(localStorage.getItem('auth_user') && localStorage.getItem('auth_pass'));
+    }
+
+    // Login automático si hay credenciales guardadas
+    function autoLogin() {
+      if (isLoggedIn()) {
+        getHeaders(); // Fuerza el header en requests
+      }
     }
 
     async function checkStatus() {
@@ -165,13 +218,22 @@
         if (data.success && data.data) {
           data.data.forEach(entry => {
             const tr = document.createElement('tr');
+            const isBlocked = entry.is_blacklist;
+            const statusColor = isBlocked ? '#dc3545' : '#28a745';
+            const statusText = isBlocked ? 'BLOQUEADO' : 'PERMITIDO';
+            const statusBg = isBlocked ? '#f8d7da' : '#d4edda';
+            
             tr.innerHTML = `
               <td>${entry.phone}</td>
-              <td>${entry.prompt || '-'}</td>
-              <td>${entry.is_blacklist ? 'Lista Negra' : 'Lista Blanca'}</td>
+              <td>${entry.prompt ? '<span style="color: #007bff;">✓ Custom</span>' : '<span style="color: #999;">-</span>'}</td>
+              <td><span class="status-badge" style="background: ${statusBg}; color: ${statusColor};">${statusText}</span></td>
               <td><input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="updateEntry(${entry.id}, 'enabled', this.checked)"></td>
               <td>
-                <button class="btn btn-danger" onclick="deleteEntry(${entry.id})">Eliminar</button>
+                ${isBlocked 
+                  ? `<button class="btn btn-success" style="font-size: 11px; padding: 4px 8px;" onclick="updateEntry(${entry.id}, 'is_blacklist', false)">✓ Permitir</button>`
+                  : `<button class="btn" style="font-size: 11px; padding: 4px 8px; background: #dc3545; color: white;" onclick="updateEntry(${entry.id}, 'is_blacklist', true)">Bloquear</button>`
+                }
+                <button class="btn btn-danger" onclick="deleteEntry(${entry.id})">✕</button>
               </td>
             `;
             tbody.appendChild(tr);
@@ -259,7 +321,8 @@
     document.getElementById('btn-add').addEventListener('click', async () => {
       const phone = document.getElementById('new-phone').value;
       const prompt = document.getElementById('new-prompt').value;
-      const is_blacklist = document.getElementById('new-is-blacklist').checked;
+      const type = document.querySelector('input[name="new-type"]:checked').value;
+      const is_blacklist = type === 'blacklist';
       
       if (!phone) return alert('El teléfono es requerido');
       
@@ -294,11 +357,75 @@
       } catch (e) { console.error(e); }
     };
 
+    // WebSocket para mensajes en tiempo real
+    const ws = new WebSocket('ws://localhost:4001');
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'new_message') {
+        loadMessages(); // Recargar cuando llega nuevo mensaje
+      }
+    };
+    ws.onclose = () => {
+      console.log('WS desconectado, reintentando...');
+      setTimeout(() => window.location.reload(), 3000);
+    };
+
+    //autoLogin();
+    
+    // Check login on load
+    if (!isLoggedIn()) {
+      document.getElementById('login-modal').style.display = 'block';
+      document.getElementById('main-content').style.display = 'none';
+    } else {
+      document.getElementById('login-modal').style.display = 'none';
+      document.getElementById('main-content').style.display = 'block';
+    }
+
+    function doLogin() {
+      const user = document.getElementById('login-user').value;
+      const pass = document.getElementById('login-pass').value;
+      if (!user || !pass) return alert('Usuario y contraseña requeridos');
+      login(user, pass);
+      document.getElementById('login-modal').style.display = 'none';
+      document.getElementById('main-content').style.display = 'block';
+      loadAll();
+    }
+
+    function doLogout() {
+      logout();
+      document.getElementById('login-modal').style.display = 'block';
+      document.getElementById('main-content').style.display = 'none';
+    }
+
+    function loadAll() {
+      loadSystemPrompt();
+      loadWhitelist();
+      loadMessages();
+      checkStatus();
+    }
+
+    document.getElementById('btn-login').addEventListener('click', doLogin);
+    document.getElementById('login-pass').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+
     let statusCheckInterval = setInterval(checkStatus, 5000);
-    checkStatus();
-    loadSystemPrompt();
-    loadWhitelist();
-    loadMessages();
+    if (isLoggedIn()) {
+      loadAll();
+    }
+
+    // Mostrar versión del sistema
+    async function loadVersion() {
+      try {
+        const res = await fetch(`${API_BASE}/api/config/system-version`);
+        const data = await res.json();
+        const ver = data.version || data.data?.version || '1.0.0';
+        document.getElementById('sys-version').textContent = ver;
+      } catch (e) {
+        document.getElementById('sys-version').textContent = '1.0.0';
+      }
+    }
+    loadVersion();
   </script>
 </body>
 </html>

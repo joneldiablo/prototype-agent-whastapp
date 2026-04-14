@@ -2,8 +2,31 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { ApiResponse } from '../types/index.js';
 import { getConfig, setConfig, getMessagesLog } from '../db/index.js';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
+
+function getAppVersion(): string {
+  try {
+    const packagePath = path.join(process.cwd(), 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+    return pkg.version || '1.0.0';
+  } catch {
+    return '1.0.0';
+  }
+}
+
+router.get('/system-version', (_req, res: Response<ApiResponse>) => {
+  res.json({
+    success: true,
+    error: false,
+    status: 200,
+    code: 200,
+    message: 'Versión del sistema',
+    data: { version: getAppVersion() },
+  });
+});
 
 router.get('/system-prompt', (_req, res: Response<ApiResponse>) => {
   const prompt = getConfig('system_prompt');
