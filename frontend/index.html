@@ -134,6 +134,7 @@
   <script>
     const API_BASE = '';
     let connectionTimeout;
+    let statusCheckInterval;
     let authToken = sessionStorage.getItem('auth_token');
 
     function getHeaders() {
@@ -172,7 +173,7 @@
 
     async function checkStatus() {
       try {
-        const res = await fetch(`${API_BASE}/api/whatsapp/status`);
+        const res = await fetch(`${API_BASE}/api/whatsapp/status`, { headers: getHeaders() });
         const data = await res.json();
         const badge = document.getElementById('wa-status');
         const phone = document.getElementById('wa-phone');
@@ -361,41 +362,59 @@
       } catch (e) { console.error(e); }
     };
 
-    // WebSocket para mensajes en tiempo real
-    const ws = new WebSocket(`ws://localhost:4001?token=${authToken}`);
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'new_message') {
-        loadMessages(); // Recargar cuando llega nuevo mensaje
-      }
-    };
-    ws.onclose = () => {
-      console.log('WS desconectado, reintentando...');
-      setTimeout(() => window.location.reload(), 3000);
-    };
+    let ws = null;
 
-    //autoLogin();
-    
-    // Check login on load
+    function connectWebSocket() {
+      if (!authToken) return;
+      ws = new WebSocket(`ws://localhost:4001?token=${authToken}`);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'new_message') {
+          loadMessages();
+        }
+      };
+      ws.onclose = () => {
+        if (isLoggedIn()) {
+          setTimeout(connectWebSocket, 3000);
+        }
+      };
+    }
+
+    function disconnectWebSocket() {
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+    }
+
     if (!isLoggedIn()) {
       document.getElementById('login-modal').style.display = 'block';
       document.getElementById('main-content').style.display = 'none';
     } else {
       document.getElementById('login-modal').style.display = 'none';
       document.getElementById('main-content').style.display = 'block';
+      connectWebSocket();
     }
 
-    function doLogin() {
+    async function doLogin() {
       const user = document.getElementById('login-user').value;
       const pass = document.getElementById('login-pass').value;
       if (!user || !pass) return alert('Usuario y contraseña requeridos');
-      login(user, pass);
+      const ok = await login(user, pass);
+      if (!ok) {
+        alert('Credenciales inválidas');
+        return;
+      }
       document.getElementById('login-modal').style.display = 'none';
       document.getElementById('main-content').style.display = 'block';
+      connectWebSocket();
       loadAll();
     }
 
     function doLogout() {
+      clearInterval(statusCheckInterval);
+      clearInterval(connectionTimeout);
+      disconnectWebSocket();
       logout();
       document.getElementById('login-modal').style.display = 'block';
       document.getElementById('main-content').style.display = 'none';
@@ -406,6 +425,7 @@
       loadWhitelist();
       loadMessages();
       checkStatus();
+      statusCheckInterval = setInterval(checkStatus, 5000);
     }
 
     document.getElementById('btn-login').addEventListener('click', doLogin);
@@ -413,7 +433,6 @@
       if (e.key === 'Enter') doLogin();
     });
 
-    let statusCheckInterval = setInterval(checkStatus, 5000);
     if (isLoggedIn()) {
       loadAll();
     }

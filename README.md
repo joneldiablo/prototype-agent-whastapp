@@ -57,7 +57,6 @@ cp .env.example .env
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `PORT` | 3000 | Puerto HTTP |
-| `WS_PORT` | 4001 | Puerto WebSocket |
 | `NODE_ENV` | development | Entorno (development/production) |
 | `WATCH` | false | Auto-reload |
 | `OPENCODE_PORT` | 4099 | Puerto servidor OpenCode |
@@ -74,16 +73,43 @@ bun start
 bun test
 
 # Release (version bump + merge a main)
-bun run release
+./release.sh
 ```
 
-## Autenticación
+## Seguridad
+
+### Autenticación
 
 El sistema usa OAuth2.0 style:
 
 1. **Login**: `POST /api/auth/login` con `{username, password}`
-2. **Token**: Devuelve token bearer con expiry
-3. **Usage**: Header `Authorization: Bearer {token}`
+2. **Token**: Devuelve token bearer con expiry (24h por defecto)
+3. **Uso**: Header `Authorization: Bearer {token}`
+
+### Rutas Protegidas
+
+Las siguientes rutas **requieren token válido**:
+
+- `/api/whatsapp/*` - Estado, conectar, desconectar, QR
+- `/api/whitelist/*` - Gestión de contactos
+- `/api/config/*` - Configuración del sistema
+
+Las rutas **públicas** (sin auth):
+
+- `/api/config/system-version` - Versión del sistema
+- `/api/config/system-prompt-preview` - Ver prompt completo
+- `/api/auth/login` - Login
+- `/api/auth/logout` - Logout
+
+### WebSocket
+
+Puerto: 4001 (requiere token en query string)
+
+```javascript
+const ws = new WebSocket('ws://localhost:4001?token={token}');
+```
+
+El WebSocket solo conecta cuando hay sesión válida. Se desconecta en logout.
 
 ## API Endpoints
 
@@ -93,32 +119,27 @@ El sistema usa OAuth2.0 style:
 |--------|----------|-------------|
 | GET | `/api/config/system-version` | Versión del sistema |
 | GET | `/api/config/system-prompt-preview` | Ver prompt completo |
-| GET | `/api/whatsapp/status` | Estado de conexión |
 | POST | `/api/auth/login` | Login |
+| POST | `/api/auth/logout` | Logout |
 
 ### Protegido (token requerido)
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| GET/POST/PUT/DELETE | `/api/whatsapp/*` |WhatsApp |
+| GET | `/api/whatsapp/status` | Estado de WhatsApp |
+| POST | `/api/whatsapp/connect` | Conectar WhatsApp |
+| POST | `/api/whatsapp/disconnect` | Desconectar WhatsApp |
+| GET | `/api/whatsapp/qr` | Obtener QR |
 | GET/POST/PUT/DELETE | `/api/whitelist/*` | Lista contactos |
 | GET/PUT | `/api/config/*` | Configuración |
-
-## WebSocket
-
-Puerto: 4001 (requiere token en query)
-
-```javascript
-const ws = new WebSocket('ws://localhost:4001?token={token}');
-```
 
 ## Arquitectura
 
 ### Servicios
 
 - **Auth Service**: Login/logout, validación token OAuth2.0
-- **WhatsApp Service**: Conexión con WhatsApp Web
-- **OpenCode Service**: Comunicación con OpenCode AI
+- **WhatsApp Service**: Conexión con WhatsApp Web usando whatsapp-web.js
+- **OpenCode Service**: Comunicación con OpenCode AI via SDK
 
 ### Principios SOLID
 
@@ -135,8 +156,6 @@ bun test
 # 135 tests, ~80% coverage
 ```
 
-Ejecutar con credenciales en `.env` para tests de auth.
-
 ## Dependencias
 
 ### Runtime
@@ -147,7 +166,7 @@ Ejecutar con credenciales en `.env` para tests de auth.
 - `@opencode-ai/sdk` - SDK de OpenCode
 - `qrcode` - Generación QR
 - `ws` - WebSocket
-- `sql.js` - SQLite
+- `sql.js` - SQLite en memoria
 
 ### Desarrollo
 - `bun` - Runtime y tests
@@ -161,6 +180,11 @@ Ejecutar con credenciales en `.env` para tests de auth.
 - El servidor de OpenCode inicia en puerto configurable (default 4099)
 
 ## Changelog
+
+### v1.0.1
+- Seguridad: Rutas `/api/whatsapp/*` ahora requieren token bearer
+- Frontend: Login valida credenciales antes de mostrar contenido
+- WebSocket: Solo conecta cuando hay sesión válida
 
 ### v1.0.0
 - Login OAuth2.0 con token bearer
