@@ -447,7 +447,7 @@
 
     function connectWebSocket() {
       if (!authToken) return;
-      ws = new WebSocket(`ws://localhost:4001?token=${authToken}`);
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}?token=${authToken}`);
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.type === 'new_message') {

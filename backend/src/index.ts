@@ -37,7 +37,8 @@ const APP_VERSION = JSON.parse(fs.readFileSync('./package.json', 'utf8')).versio
 // WEBSOCKET SERVER
 // ============================================================
 
-const wss = new WebSocketServer({ port: 4001 });
+const WS_PORT = parseInt(process.env.PORT || '3000', 10) + 1;
+const wss = new WebSocketServer({ port: WS_PORT });
 
 const clients = new Set<any>();
 
