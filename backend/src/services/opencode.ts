@@ -189,6 +189,8 @@ export async function sendToSession(phone: string, message: string): Promise<str
     throw new Error(response.error.name + ': ' + JSON.stringify(response.error.data));
   }
 
+  log('[OpenCode] Response:', JSON.stringify(response).substring(0, 500));
+
   const parts = response.data?.parts || response.parts || [];
   return extractTextFromResponse(parts);
 }
@@ -234,10 +236,13 @@ export async function closeOpenCode(): Promise<void> {
  * @returns Primer texto encontrado o默认值
  */
 function extractTextFromResponse(parts: Part[]): string {
+  if (!parts || parts.length === 0) {
+    return 'Sin respuesta';
+  }
   for (const part of parts) {
-    if (part.type === 'text') {
+    if (part.type === 'text' && part.text) {
       return part.text;
     }
   }
-  return 'Sin respuesta';
+  return JSON.stringify(parts);
 }
