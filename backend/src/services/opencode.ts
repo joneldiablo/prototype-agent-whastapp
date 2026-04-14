@@ -15,9 +15,10 @@
 // IMPORTS
 // ============================================================
 
-import { createOpencode, type OpencodeClient } from '@opencode-ai/sdk';
+import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import type { Part } from '@opencode-ai/sdk';
 import { getSessionByPhone, createSession, getConfig } from '../db/index.js';
+import { createServer } from 'net';
 
 // ============================================================
 // CONFIGURACIÓN
@@ -29,6 +30,21 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const SYSTEM_PROMPT_DEFAULT = process.env.SYSTEM_PROMPT || '';
 
 const isProd = NODE_ENV === 'production';
+
+/**
+ * Verifica si un puerto está en uso.
+ */
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', () => resolve(true));
+    server.once('listening', () => {
+      server.close();
+      resolve(false);
+    });
+    server.listen(port, '127.0.0.1');
+  });
+}
 
 /**
  * Logger conditional según entorno.
@@ -99,6 +115,17 @@ export async function initOpenCode(version?: string): Promise<void> {
   
   if (!OPENCODE_API_KEY) {
     log('[OpenCode] OPENCODE_API_KEY no configurada');
+    return;
+  }
+
+  const portInUse = await isPortInUse(OPENCODE_PORT);
+  
+  if (portInUse) {
+    log(`[OpenCode] Puerto ${OPENCODE_PORT} ya está en uso, conectando al servidor existente...`);
+    client = createOpencodeClient({
+      baseUrl: `http://localhost:${OPENCODE_PORT}`,
+    });
+    log('[OpenCode] Cliente conectado al servidor existente');
     return;
   }
 
@@ -189,7 +216,12 @@ export async function sendToSession(phone: string, message: string): Promise<str
     throw new Error(response.error.name + ': ' + JSON.stringify(response.error.data));
   }
 
+  log('[OpenCode] Response raw:', JSON.stringify(response));
+
   const parts = response.data?.parts || response.parts || [];
+  if (!parts || parts.length === 0) {
+    log('[OpenCode] Parts vacíos o undefined, respuesta completa:', response);
+  }
   return extractTextFromResponse(parts);
 }
 
@@ -220,6 +252,9 @@ export async function closeOpenCode(): Promise<void> {
     client = null;
     serverClose = null;
     log('[OpenCode] Cliente cerrado');
+  } else if (client) {
+    client = null;
+    log('[OpenCode] Cliente desconectado del servidor externo');
   }
 }
 
@@ -234,10 +269,13 @@ export async function closeOpenCode(): Promise<void> {
  * @returns Primer texto encontrado o默认值
  */
 function extractTextFromResponse(parts: Part[]): string {
+  if (!parts || parts.length === 0) {
+    return 'Sin respuesta';
+  }
   for (const part of parts) {
-    if (part.type === 'text') {
+    if (part.type === 'text' && part.text) {
       return part.text;
     }
   }
-  return 'Sin respuesta';
+  return JSON.stringify(parts);
 }
