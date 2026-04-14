@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Response, Request } from 'express';
 import type { ApiResponse } from '../types/index.js';
-import { getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getQR } from '../services/whatsapp.js';
+import { getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getQR, searchContacts } from '../services/whatsapp.js';
 import { validateToken } from '../services/auth.js';
 
 const router = Router();
@@ -92,6 +92,45 @@ router.get('/qr', requireAuth, async (_req, res: Response<ApiResponse>) => {
       status: 500,
       code: 500,
       message: error instanceof Error ? error.message : 'Error al generar QR',
+    });
+  }
+});
+
+/**
+ * Busca contactos y grupos en WhatsApp.
+ * 
+ * Query: ?q=texto (mínimo 2 caracteres)
+ * Requiere auth token
+ */
+router.get('/search', requireAuth, async (req: Request, res: Response<ApiResponse>) => {
+  try {
+    const query = (req.query.q as string) || '';
+    if (!query || query.length < 2) {
+      return res.json({
+        success: false,
+        error: true,
+        status: 400,
+        code: 400,
+        message: 'Mínimo 2 caracteres para buscar',
+      });
+    }
+
+    const results = await searchContacts(query);
+    res.json({
+      success: true,
+      error: false,
+      status: 200,
+      code: 200,
+      message: `${results.length} resultados`,
+      data: results,
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: true,
+      status: 500,
+      code: 500,
+      message: error instanceof Error ? error.message : 'Error al buscar',
     });
   }
 });
