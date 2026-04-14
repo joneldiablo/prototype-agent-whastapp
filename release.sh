@@ -55,8 +55,7 @@ fi
 
 git branch -D "$TEMP_BRANCH"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$(git rev-parse --show-toplevel)"
 
 if [[ "$BACKEND_CHANGED" == "1" ]]; then
   BACK_VERSION=$(node update-version.js backend/package.json)
