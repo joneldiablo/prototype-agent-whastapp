@@ -304,3 +304,68 @@ export async function getQR(): Promise<string | null> {
   
   return null;
 }
+
+export interface ContactSearchResult {
+  id: string;
+  name?: string;
+  pushName?: string;
+  phone?: string;
+  isGroup: boolean;
+}
+
+/**
+ * Busca contactos y grupos por nombre, teléfono o ID.
+ * 
+ * @param query - Texto a buscar (mínimo 2 caracteres)
+ * @returns Array de contactos/grupos encontrados
+ * 
+ * @example
+ * const results = await searchContacts('Juan');
+ * // [{ id: '5215555555555@c.us', name: 'Juan', phone: '5215555555555', isGroup: false }]
+ */
+export async function searchContacts(query: string): Promise<ContactSearchResult[]> {
+  if (!client || !status.connected) {
+    return [];
+  }
+
+  const results: ContactSearchResult[] = [];
+  const lowerQuery = query.toLowerCase();
+
+  try {
+    const chats = await client.getChats();
+    
+    for (const chat of chats) {
+      const chatName = chat.name || '';
+      const contact = chat.id;
+      
+      if (contact.server === 'g.us') {
+        if (chatName.toLowerCase().includes(lowerQuery) || contact._serialized.toLowerCase().includes(lowerQuery)) {
+          results.push({
+            id: contact._serialized,
+            name: chatName,
+            isGroup: true,
+          });
+        }
+      } else if (contact.server === 'c.us') {
+        const contactObj = await client.getContactById(contact._serialized);
+        const name = contactObj.pushName || contactObj.shortName || contactObj.name || '';
+        
+        if (name.toLowerCase().includes(lowerQuery) || contact._serialized.toLowerCase().includes(lowerQuery)) {
+          results.push({
+            id: contact._serialized,
+            name: name,
+            pushName: contactObj.pushName,
+            phone: contact._serialized.replace('@c.us', ''),
+            isGroup: false,
+          });
+        }
+      }
+
+      if (results.length >= 20) break;
+    }
+  } catch (error) {
+    log('[WhatsApp] Error searching contacts:', error);
+  }
+
+  return results;
+}

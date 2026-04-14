@@ -74,6 +74,24 @@
     </div>
 
     <div class="card">
+      <h2>Buscar Contactos</h2>
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <input type="text" id="search-query" placeholder="Buscar por nombre o número..." style="flex: 1;">
+        <button class="btn btn-primary" id="btn-search">Buscar</button>
+      </div>
+      <div id="search-results" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+        <p style="color: #666; font-size: 12px;">Ingresa al menos 2 caracteres para buscar</p>
+      </div>
+      <div id="contact-detail" style="display: none; padding: 10px; background: #e9ecef; border-radius: 6px;">
+        <p><b>ID:</b> <span id="detail-id"></span></p>
+        <p><b>Nombre:</b> <span id="detail-name"></span></p>
+        <p><b>Teléfono:</b> <span id="detail-phone"></span></p>
+        <p><b>Tipo:</b> <span id="detail-type"></span></p>
+        <button class="btn btn-primary" id="btn-add-from-search" style="margin-top: 10px;">Agregar a Lista</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Gestión de Contactos</h2>
       <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
         <div style="flex: 1; min-width: 200px;">
@@ -145,20 +163,24 @@
       return headers;
     }
 
-    function login(user, pass) {
-      return fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, password: pass })
-      }).then(r => r.json())
-        .then(data => {
-          if (data.success && data.token) {
-            authToken = data.token;
-            sessionStorage.setItem('auth_token', data.token);
-            return true;
-          }
-          return false;
+    async function login(user, pass) {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: user, password: pass })
         });
+        const data = await res.json();
+        if (data.success && data.token) {
+          authToken = data.token;
+          sessionStorage.setItem('auth_token', data.token);
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.error(e);
+        return false;
+      }
     }
 
     function logout() {
@@ -323,6 +345,64 @@
       } catch (e) { console.error(e); }
     });
 
+    let selectedContact = null;
+
+    document.getElementById('btn-search').addEventListener('click', async () => {
+      const query = document.getElementById('search-query').value;
+      if (query.length < 2) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/whatsapp/search?q=${encodeURIComponent(query)}`, { headers: getHeaders() });
+        const data = await res.json();
+        const container = document.getElementById('search-results');
+        
+        if (data.success && data.data && data.data.length > 0) {
+          container.innerHTML = data.data.map(c => `
+            <div class="search-result" style="padding: 8px; border-bottom: 1px solid #eee; cursor: pointer;" data-id="${c.id}" data-name="${c.name || ''}" data-phone="${c.phone || ''}" data-is-group="${c.isGroup}">
+              <b>${c.isGroup ? '👥 Grupo' : '👤 Contacto'}</b> ${c.name || c.id} ${c.phone ? `(${c.phone})` : ''}
+            </div>
+          `).join('');
+          
+          container.querySelectorAll('.search-result').forEach(el => {
+            el.addEventListener('click', () => {
+              selectedContact = {
+                id: el.dataset.id,
+                name: el.dataset.name,
+                phone: el.dataset.phone,
+                isGroup: el.dataset.isGroup === 'true'
+              };
+              document.getElementById('detail-id').textContent = selectedContact.id;
+              document.getElementById('detail-name').textContent = selectedContact.name || '-';
+              document.getElementById('detail-phone').textContent = selectedContact.phone || '-';
+              document.getElementById('detail-type').textContent = selectedContact.isGroup ? 'Grupo' : 'Usuario';
+              document.getElementById('contact-detail').style.display = 'block';
+            });
+          });
+        } else {
+          container.innerHTML = '<p style="color: #666;">No se encontraron resultados</p>';
+        }
+      } catch (e) { console.error(e); }
+    });
+
+    document.getElementById('btn-add-from-search').addEventListener('click', async () => {
+      if (!selectedContact) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/whitelist`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ 
+            phone: selectedContact.id, 
+            prompt: '',
+            is_blacklist: false 
+          })
+        });
+        await res.json();
+        loadWhitelist();
+        alert('Agregado: ' + selectedContact.id);
+      } catch (e) { console.error(e); }
+    });
+
     document.getElementById('btn-add').addEventListener('click', async () => {
       const phone = document.getElementById('new-phone').value;
       const prompt = document.getElementById('new-prompt').value;
@@ -351,6 +431,7 @@
           headers: getHeaders(),
           body: JSON.stringify({ [field]: value })
         });
+        loadWhitelist();
       } catch (e) { console.error(e); }
     };
 

@@ -130,6 +130,7 @@ El WebSocket solo conecta cuando hay sesión válida. Se desconecta en logout.
 | POST | `/api/whatsapp/connect` | Conectar WhatsApp |
 | POST | `/api/whatsapp/disconnect` | Desconectar WhatsApp |
 | GET | `/api/whatsapp/qr` | Obtener QR |
+| GET | `/api/whatsapp/search?q=` | Buscar contactos/grupos |
 | GET/POST/PUT/DELETE | `/api/whitelist/*` | Lista contactos |
 | GET/PUT | `/api/config/*` | Configuración |
 
@@ -153,7 +154,7 @@ El WebSocket solo conecta cuando hay sesión válida. Se desconecta en logout.
 
 ```bash
 bun test
-# 135 tests, ~80% coverage
+# 98 tests, ~80% coverage
 ```
 
 ## Dependencias
@@ -180,6 +181,11 @@ bun test
 - El servidor de OpenCode inicia en puerto configurable (default 4099)
 
 ## Changelog
+
+### v1.0.2
+- Search: Buscador de contactos y grupos en WhatsApp
+- Frontend: Panel de búsqueda con resultados en tiempo real
+- Frontend: Actualización automática de tabla al cambiar estado
 
 ### v1.0.1
 - Seguridad: Rutas `/api/whatsapp/*` ahora requieren token bearer
