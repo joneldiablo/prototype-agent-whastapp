@@ -46,6 +46,15 @@ cd backend && chmod +x release.sh && ./release.sh || {
 git checkout main
 git merge --no-ff "$TEMP_BRANCH"
 
+if git diff --cached --quiet; then
+  echo "Nothing to commit after merge."
+else
+  git commit -m "Merge branch '$CURRENT_BRANCH' into main"
+  git push origin main
+fi
+
+git branch -D "$TEMP_BRANCH"
+
 if [[ "$BACKEND_CHANGED" == "1" ]]; then
   BACK_VERSION=$(node ../update-version.js backend/package.json)
   echo "Backend version updated to ${BACK_VERSION}"
@@ -65,20 +74,12 @@ fi
 ROOT_VERSION=$(node ../update-version.js)
 echo "Root version updated to ${ROOT_VERSION}"
 
-COMMIT_MESSAGE="release: v${ROOT_VERSION} (frontend v${FRONT_VERSION}, backend v${BACK_VERSION})"
-
 git add .
-if git diff --cached --quiet; then
-  echo "Nothing to commit after release tasks."
-else
-  git commit -m "$COMMIT_MESSAGE"
-  git push origin main
-fi
+git commit -m "release: v${ROOT_VERSION} (frontend v${FRONT_VERSION}, backend v${BACK_VERSION})"
+git push origin main
 
 git tag -a "v${ROOT_VERSION}" -m "Frontend v${FRONT_VERSION}, Backend v${BACK_VERSION}"
 git push origin "v${ROOT_VERSION}"
-
-git branch -D "$TEMP_BRANCH"
 
 git checkout "$CURRENT_BRANCH"
 

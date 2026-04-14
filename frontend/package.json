@@ -1,6 +1,6 @@
 {
   "name": "frontend-dev",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Frontend Admin para WhatsApp Agent",
   "type": "module",
   "scripts": {
