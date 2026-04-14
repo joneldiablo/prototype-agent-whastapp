@@ -41,7 +41,16 @@ const wss = new WebSocketServer({ port: 4001 });
 
 const clients = new Set<any>();
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Validar token en query string
+  const url = new URL(req.url || '', 'http://localhost');
+  const token = url.searchParams.get('token');
+  
+  if (!token || !validateToken(token).valid) {
+    ws.close(1008, 'Unauthorized');
+    return;
+  }
+  
   clients.add(ws);
   ws.on('close', () => clients.delete(ws));
 });
@@ -90,6 +99,7 @@ const PORT = process.env.PORT || 3000;
 import { initDb, getWhitelist, logMessage as dbLogMessage } from './db/index.js';
 import { initOpenCode, sendToSession, isOpenCodeConfigured } from './services/opencode.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './services/whatsapp.js';
+import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
 
 // ============================================================
 // INICIALIZACIÓN
@@ -137,7 +147,44 @@ app.get('/api/config/system-version', (_req, res) => {
   res.json({ success: true, version: APP_VERSION });
 });
 
-import { getConfig } from './db/index.js';
+// Auth routes
+app.post('/api/auth/login', express.json(), async (req, res) => {
+  const { username, password } = req.body;
+  const result = await authLogin(username, password);
+  
+  if (!result) {
+    return res.json({ success: false, error: true, message: 'Credenciales inválidas' });
+  }
+  
+  res.json({ success: true, token: result.token, expiresIn: result.expiresIn });
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  const auth = _req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    authLogout(auth.substring(7));
+  }
+  res.json({ success: true });
+});
+
+// Middleware para validar token
+function requireAuth(req: any, res: any, next: any) {
+  const auth = req.headers.authorization;
+  
+  if (!auth?.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: true, message: 'Token requerido' });
+  }
+  
+  const token = auth.substring(7);
+  const validation = validateToken(token);
+  
+  if (!validation.valid) {
+    return res.status(401).json({ success: false, error: true, message: 'Token inválido o expirado' });
+  }
+  
+  next();
+}
+
 app.get('/api/config/system-prompt-preview', (_req, res) => {
   const dbPrompt = getConfig('system_prompt');
   const systemPromptEnv = process.env.SYSTEM_PROMPT || '';
@@ -152,9 +199,9 @@ app.get('/api/config/system-prompt-preview', (_req, res) => {
   });
 });
 
-// Rutas con autenticación
-app.use('/api/whitelist', authMiddleware, whitelistRoutes);
-app.use('/api/config', authMiddleware, configRoutes);
+// Rutas con authentication (token bearer)
+app.use('/api/whitelist', requireAuth, whitelistRoutes);
+app.use('/api/config', requireAuth, configRoutes);
 
 // ============================================================
 // HANDLER DE MENSAJES
