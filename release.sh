@@ -55,8 +55,11 @@ fi
 
 git branch -D "$TEMP_BRANCH"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 if [[ "$BACKEND_CHANGED" == "1" ]]; then
-  BACK_VERSION=$(node ../update-version.js backend/package.json)
+  BACK_VERSION=$(node update-version.js backend/package.json)
   echo "Backend version updated to ${BACK_VERSION}"
 else
   BACK_VERSION=$(node -p "require('./backend/package.json').version")
@@ -64,14 +67,14 @@ else
 fi
 
 if [[ "$FRONTEND_CHANGED" == "1" ]]; then
-  FRONT_VERSION=$(node ../update-version.js frontend/package.json)
+  FRONT_VERSION=$(node update-version.js frontend/package.json)
   echo "Frontend version updated to ${FRONT_VERSION}"
 else
   FRONT_VERSION=$(node -p "require('./frontend/package.json').version")
   echo "Frontend version unchanged (${FRONT_VERSION})"
 fi
 
-ROOT_VERSION=$(node ../update-version.js)
+ROOT_VERSION=$(node update-version.js)
 echo "Root version updated to ${ROOT_VERSION}"
 
 git add .
