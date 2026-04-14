@@ -1,6 +1,6 @@
 {
   "name": "prototype-agent-whatsapp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Prototipo de comunicación WhatsApp con agente Big Pickle de OpenCode",
   "workspaces": [
@@ -20,7 +20,13 @@
     "dotenv": "^16.4.0",
     "ws": "^8.20.0"
   },
-  "keywords": ["whatsapp", "opencode", "big-pickle", "agent", "api"],
+  "keywords": [
+    "whatsapp",
+    "opencode",
+    "big-pickle",
+    "agent",
+    "api"
+  ],
   "author": "joneldiablo",
   "license": "ISC",
   "devDependencies": {
