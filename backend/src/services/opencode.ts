@@ -24,7 +24,6 @@ import { createServer } from 'net';
 // CONFIGURACIÓN
 // ============================================================
 
-const OPENCODE_API_KEY = process.env.OPENCODE_API_KEY || '';
 const OPENCODE_PORT = parseInt(process.env.OPENCODE_PORT || '4099', 10);
 const ENV = process.env.ENV || '';
 const SYSTEM_PROMPT_DEFAULT = process.env.SYSTEM_PROMPT || '';
@@ -85,6 +84,28 @@ let client: OpencodeClient | null = null;
 let serverClose: (() => void) | null = null;
 let appVersion = '1.0.0';
 
+function isConnectionError(err: unknown): boolean {
+  const errStr = String(err);
+  return (
+    errStr.includes('ECONNREFUSED') ||
+    errStr.includes('ConnectionRefused') ||
+    errStr.includes('connection refused') ||
+    errStr.includes('Unable to connect')
+  );
+}
+
+async function recoverOpenCodeClient(): Promise<boolean> {
+  try {
+    log('[OpenCode] Intentando reinicializar cliente/servidor...');
+    await closeOpenCode();
+    await initOpenCode();
+    return await isOpenCodeServerAvailable();
+  } catch (err) {
+    log('[OpenCode] Falló la reinicialización:', err);
+    return false;
+  }
+}
+
 /**
  * Establece la versión de la aplicación.
  */
@@ -130,11 +151,6 @@ export async function initOpenCode(version?: string): Promise<void> {
     }
   }
   
-  if (!OPENCODE_API_KEY) {
-    log('[OpenCode] OPENCODE_API_KEY no configurada');
-    return;
-  }
-
   try {
     const portInUse = await isPortInUse(OPENCODE_PORT);
     
@@ -172,6 +188,12 @@ export async function initOpenCode(version?: string): Promise<void> {
 export async function getOrCreateSession(phone: string): Promise<{ sessionId: string; isNew: boolean }> {
   if (!client) {
     throw new Error('OpenCode no inicializado');
+  }
+
+  // Verificar si el servidor está disponible antes de proceder
+  const serverAvailable = await isOpenCodeServerAvailable();
+  if (!serverAvailable) {
+    throw new Error('Servidor de OpenCode no disponible');
   }
 
   // Verificar si existe sesión en DB
@@ -233,18 +255,9 @@ export async function sendToSession(phone: string, message: string): Promise<str
   }
 
   const fromShort = phone.replace(/^\+/, '').replace(/^521/, '');
-  let { sessionId, isNew } = await getOrCreateSession(phone);
 
   // Obtener prompt de BD y construir prompt completo
   const dbPrompt = getConfig('system_prompt');
-  let fullPrompt = buildSystemPrompt(dbPrompt, appVersion);
-  
-  // Si es nueva sesión, indicar que el contexto se reinició
-  if (isNew) {
-    fullPrompt += '\n\nNota: Este es el primer mensaje de esta sesión. El contexto se ha reiniciado. Saluda al usuario amablemente y pregúntale en qué puedes ayudarle.';
-  }
-  
-  logSensitive('[OpenCode] Prompt completo:', fullPrompt.substring(0, 200) + '...');
 
   // Verificar si el mensaje contiene una imagen en base64
   const imageMatch = message.match(/\[Imagen: (data:image\/(\w+);base64,.+)\]/);
@@ -276,6 +289,15 @@ export async function sendToSession(phone: string, message: string): Promise<str
   log(`[OpenCode] Enviando consulta desde ${fromShort}...`);
 
   try {
+    const { sessionId, isNew } = await getOrCreateSession(phone);
+
+    let fullPrompt = buildSystemPrompt(dbPrompt, appVersion);
+    if (isNew) {
+      fullPrompt += '\n\nNota: Este es el primer mensaje de esta sesión. El contexto se ha reiniciado. Saluda al usuario amablemente y pregúntale en qué puedes ayudarle.';
+    }
+
+    logSensitive('[OpenCode] Prompt completo:', fullPrompt.substring(0, 200) + '...');
+
     const response = await client.session.prompt({
       path: { id: sessionId },
       body: {
@@ -298,16 +320,22 @@ export async function sendToSession(phone: string, message: string): Promise<str
     }
     return extractTextFromResponse(responseParts);
   } catch (err) {
-    // Detectar si es un error de conexión rechazada
     const errStr = String(err);
-    const isConnectionError = 
-      errStr.includes('ECONNREFUSED') ||
-      errStr.includes('ConnectionRefused') ||
-      errStr.includes('connection refused') ||
-      errStr.includes('Unable to connect');
 
-    if (isConnectionError) {
-      log(`[OpenCode] Sesión no disponible para ${fromShort} (${errStr.substring(0, 80)}...). Descartando y reintentando...`);
+    if (isConnectionError(err)) {
+      log(`[OpenCode] Error de conexión para ${fromShort} (${errStr.substring(0, 80)}...). Verificando servidor...`);
+
+      let serverAvailable = await isOpenCodeServerAvailable();
+      if (!serverAvailable) {
+        serverAvailable = await recoverOpenCodeClient();
+      }
+
+      if (!serverAvailable) {
+        log(`[OpenCode] Servidor no disponible en puerto ${OPENCODE_PORT}. No se puede hacer auto-recovery.`);
+        return `Lo siento, el servicio de IA no está disponible en este momento. Por favor, intenta más tarde o contacta al administrador del sistema.`;
+      }
+      
+      log(`[OpenCode] Servidor disponible, descartando sesión expirada y reintentando...`);
       
       // Descartar sesión expirada
       deleteSession(phone);
@@ -338,7 +366,7 @@ export async function sendToSession(phone: string, message: string): Promise<str
         return extractTextFromResponse(responseParts);
       } catch (retryErr) {
         log('[OpenCode] Error en reintento:', retryErr);
-        throw new Error(`Error incluso después de crear nueva sesión: ${retryErr}`);
+        return `Lo siento, ocurrió un error al procesar tu mensaje. El servicio de IA está temporalmente indisponible. Por favor, intenta de nuevo en unos minutos.`;
       }
     }
 
@@ -348,16 +376,17 @@ export async function sendToSession(phone: string, message: string): Promise<str
   }
 }
 
-/**
- * Verifica si OpenCode está configurado.
- * 
- * @returns true si hay API key configurada
- * 
- * @example
- * if (isOpenCodeConfigured()) { ... }
+/** * Verifica si el servidor de OpenCode está disponible.
  */
-export function isOpenCodeConfigured(): boolean {
-  return OPENCODE_API_KEY.length > 0;
+export async function isOpenCodeServerAvailable(): Promise<boolean> {
+  if (!client) return false;
+  
+  try {
+    await client.global.health();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

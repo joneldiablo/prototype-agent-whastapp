@@ -490,8 +490,8 @@ export function publicFunction(): string {
 # .env.local (gitignored)
 PORT=3000
 ENV=dev
-OPENCODE_API_KEY=sk-test-key
 OPENCODE_USER_PASSWORD=admin:password
+OPENCODE_PORT=4099
 WATCH=true
 ```
 
@@ -501,8 +501,8 @@ WATCH=true
 # .env.prod (en servidor)
 PORT=3000
 ENV=prod
-OPENCODE_API_KEY=sk-real-key
 OPENCODE_USER_PASSWORD=usuario:contraseña_segura
+OPENCODE_PORT=4099
 SYSTEM_PROMPT="Prompt del sistema"
 TOKEN_EXPIRY_HOURS=24
 ```
@@ -575,16 +575,16 @@ docker-compose down
 
 ## 🔨 Troubleshooting
 
-### Error: "OPENCODE_API_KEY no configurada"
+### Error: "OpenCode no inicializado"
 
-**Problema:** El servidor no inicia sin API key.
+**Problema:** El backend no logró levantar o alcanzar el servidor local de OpenCode.
 
 **Solución:**
 ```bash
 # Copiar .env.example
 cp .env.example .env
 
-# Editar .env con tus credenciales
+# Editar .env con tus credenciales y puerto de OpenCode
 ```
 
 ### Error: "EADDRINUSE: port 3000 already in use"

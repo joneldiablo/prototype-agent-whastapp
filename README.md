@@ -68,7 +68,7 @@ Acceso a reportes del proyecto:
 
 - **Bun** 1.0+
 - **Node.js** 18+
-- **OpenCode API Key**
+- **CLI de OpenCode** disponible en el servidor
 
 ---
 
