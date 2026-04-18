@@ -61,7 +61,7 @@ if [[ "$BACKEND_CHANGED" == "1" ]]; then
   BACK_VERSION=$(node update-version.js backend/package.json)
   echo "Backend version updated to ${BACK_VERSION}"
 else
-  BACK_VERSION=$(node -p "require('./backend/package.json').version")
+  BACK_VERSION=$(grep '"version"' ./backend/package.json | head -1 | sed 's/.*: "\(.*\)".*/\1/')
   echo "Backend version unchanged (${BACK_VERSION})"
 fi
 
@@ -69,7 +69,7 @@ if [[ "$FRONTEND_CHANGED" == "1" ]]; then
   FRONT_VERSION=$(node update-version.js frontend/package.json)
   echo "Frontend version updated to ${FRONT_VERSION}"
 else
-  FRONT_VERSION=$(node -p "require('./frontend/package.json').version")
+  FRONT_VERSION=$(grep '"version"' ./frontend/package.json | head -1 | sed 's/.*: "\(.*\)".*/\1/')
   echo "Frontend version unchanged (${FRONT_VERSION})"
 fi
 

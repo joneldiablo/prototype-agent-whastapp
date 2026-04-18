@@ -1,6 +1,6 @@
 {
   "name": "prototype-agent-whatsapp",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "description": "Prototipo de comunicación WhatsApp con agente Big Pickle de OpenCode",
