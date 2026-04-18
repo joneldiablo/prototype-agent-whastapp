@@ -17,7 +17,7 @@
 
 import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import type { Part } from '@opencode-ai/sdk';
-import { getSessionByPhone, createSession, getConfig } from '../db/index.js';
+import { getSessionByPhone, createSession, getConfig, deleteSession } from '../db/index.js';
 import { createServer } from 'net';
 
 // ============================================================
@@ -179,9 +179,13 @@ export async function getOrCreateSession(phone: string): Promise<{ sessionId: st
   if (existing) {
     try {
       await client.session.get({ path: { id: existing.opencode_session_id } });
+      logSensitive(`[OpenCode] Sesión válida encontrada para ${phone.replace(/^\+/, '').replace(/^521/, '')}`);
       return { sessionId: existing.opencode_session_id, isNew: false };
-    } catch {
-      // Sesión no existe en OpenCode, crear nueva
+    } catch (err) {
+      // Sesión no existe en OpenCode o está expirada
+      const errMsg = String(err);
+      logSensitive(`[OpenCode] Sesión expirada/no válida para ${phone}, descartando: ${errMsg.substring(0, 100)}`);
+      deleteSession(phone);
     }
   }
 
@@ -191,13 +195,25 @@ export async function getOrCreateSession(phone: string): Promise<{ sessionId: st
   });
 
   const sessionId = session.data?.id || session.id;
-  createSession(phone, sessionId);
+  
+  if (existing) {
+    // Si existía, actualizar el registro
+    logSensitive(`[OpenCode] Actualizando sesión para ${phone}`);
+    createSession(phone, sessionId); // INSERT OR REPLACE cuando sea necesario
+  } else {
+    logSensitive(`[OpenCode] Creando sesión nueva para ${phone}`);
+    createSession(phone, sessionId);
+  }
 
   return { sessionId, isNew: true };
 }
 
 /**
  * Envía un mensaje a una sesión existente.
+ * 
+ * Maneja automáticamente sesiones expiradas:
+ * - Si la sesión no responde (ConnectionRefused), la descarta
+ * - Crea una nueva sesión y reintenta
  * 
  * @param phone - Número de teléfono
  * @param message - Mensaje a enviar
@@ -216,7 +232,8 @@ export async function sendToSession(phone: string, message: string): Promise<str
     }
   }
 
-  const { sessionId, isNew } = await getOrCreateSession(phone);
+  const fromShort = phone.replace(/^\+/, '').replace(/^521/, '');
+  let { sessionId, isNew } = await getOrCreateSession(phone);
 
   // Obtener prompt de BD y construir prompt completo
   const dbPrompt = getConfig('system_prompt');
@@ -256,7 +273,6 @@ export async function sendToSession(phone: string, message: string): Promise<str
     } as Part);
   }
 
-  const fromShort = phone.replace(/^\+/, '').replace(/^521/, '');
   log(`[OpenCode] Enviando consulta desde ${fromShort}...`);
 
   try {
@@ -282,6 +298,51 @@ export async function sendToSession(phone: string, message: string): Promise<str
     }
     return extractTextFromResponse(responseParts);
   } catch (err) {
+    // Detectar si es un error de conexión rechazada
+    const errStr = String(err);
+    const isConnectionError = 
+      errStr.includes('ECONNREFUSED') ||
+      errStr.includes('ConnectionRefused') ||
+      errStr.includes('connection refused') ||
+      errStr.includes('Unable to connect');
+
+    if (isConnectionError) {
+      log(`[OpenCode] Sesión no disponible para ${fromShort} (${errStr.substring(0, 80)}...). Descartando y reintentando...`);
+      
+      // Descartar sesión expirada
+      deleteSession(phone);
+      
+      // Reintentar con nueva sesión
+      try {
+        const { sessionId: newSessionId } = await getOrCreateSession(phone);
+        log(`[OpenCode] Nueva sesión creada para ${fromShort}, reintentando envío...`);
+        
+        // Reconstruir prompt (está puede ser una nueva sesión)
+        let retryPrompt = buildSystemPrompt(dbPrompt, appVersion);
+        retryPrompt += '\n\nNota: Este es el primer mensaje de esta sesión. El contexto se ha reiniciado. Saluda al usuario amablemente y pregúntale en qué puedes ayudarle.';
+        
+        const retryResponse = await client.session.prompt({
+          path: { id: newSessionId },
+          body: {
+            system: retryPrompt,
+            parts,
+          },
+        });
+
+        if (retryResponse.error) {
+          throw new Error(retryResponse.error.name + ': ' + JSON.stringify(retryResponse.error.data));
+        }
+
+        log(`[OpenCode] Respuesta reintentada recibida desde ${fromShort}`);
+        const responseParts = retryResponse.data?.parts || retryResponse.parts || [];
+        return extractTextFromResponse(responseParts);
+      } catch (retryErr) {
+        log('[OpenCode] Error en reintento:', retryErr);
+        throw new Error(`Error incluso después de crear nueva sesión: ${retryErr}`);
+      }
+    }
+
+    // Si no es error de conexión, lanzar el error original
     log('[OpenCode] Error en consulta:', err);
     throw err;
   }

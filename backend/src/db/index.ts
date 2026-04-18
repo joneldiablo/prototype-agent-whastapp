@@ -172,7 +172,8 @@ export function getSessionByPhone(phone: string): { id: number; phone: string; o
 
 export function createSession(phone: string, opencodeSessionId: string): { lastInsertRowid: number; changes: number } {
   if (!db) return { lastInsertRowid: 0, changes: 0 };
-  db.run('INSERT INTO sessions (phone, opencode_session_id) VALUES (?, ?)', [phone, opencodeSessionId]);
+  // Usar INSERT OR REPLACE para actualizar si ya existe
+  db.run('INSERT OR REPLACE INTO sessions (phone, opencode_session_id, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)', [phone, opencodeSessionId]);
   const result = db.exec('SELECT last_insert_rowid() as id');
   saveDb();
   return { lastInsertRowid: result[0]?.values[0]?.[0] || 0, changes: 1 };
@@ -181,6 +182,13 @@ export function createSession(phone: string, opencodeSessionId: string): { lastI
 export function updateSessionPhone(phone: string, opencodeSessionId: string): { changes: number } {
   if (!db) return { changes: 0 };
   db.run('UPDATE sessions SET opencode_session_id = ?, updated_at = CURRENT_TIMESTAMP WHERE phone = ?', [opencodeSessionId, phone]);
+  saveDb();
+  return { changes: db.getRowsModified() };
+}
+
+export function deleteSession(phone: string): { changes: number } {
+  if (!db) return { changes: 0 };
+  db.run('DELETE FROM sessions WHERE phone = ?', [phone]);
   saveDb();
   return { changes: db.getRowsModified() };
 }
