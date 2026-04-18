@@ -13,7 +13,7 @@ Configura estas variables en un archivo `.env` en la raíz del proyecto:
 | `PORT` | Puerto del servidor | `4000` | `4000` |
 | `WATCH` | Modo watch con hot-reload (desarrollo) | `false` | `true` o `false` |
 | `OPENCODE_USER_PASSWORD` | Credenciales OpenCode | - | `dbladmin:Qwerty1236!` |
-| `OPENCODE_API_KEY` | API Key OpenCode | - | `sk-Z4FiO39wCQdaYcLodn2mPh4BifEOmdfQ8t92Npxpt3rk44vw8Xx5SGgBb0F1F7HG` |
+| `OPENCODE_PORT` | Puerto local donde escucha OpenCode | `4099` | `4099` |
 | `CHROME_PATH` | Ruta personalizada a Chrome (opcional) | Auto (Puppeteer) | `/usr/bin/chromium-browser` |
 
 ## Uso
@@ -24,7 +24,7 @@ Copia el archivo `.env.example` y configura tus variables:
 
 ```bash
 cp .env.example .env
-# Edita .env con tus credenciales de OpenCode
+# Edita .env con tus credenciales y el puerto local de OpenCode
 ```
 
 ### 2. Construir la imagen Docker
