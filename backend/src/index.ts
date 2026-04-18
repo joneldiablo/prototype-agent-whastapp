@@ -120,7 +120,7 @@ const PORT = process.env.PORT || 3000;
 // ============================================================
 
 import { initDb, getWhitelist, logMessage as dbLogMessage } from './db/index.js';
-import { initOpenCode, sendToSession, isOpenCodeConfigured } from './services/opencode.js';
+import { initOpenCode, sendToSession, isOpenCodeConfigured, isOpenCodeServerAvailable } from './services/opencode.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './services/whatsapp.js';
 import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
 
@@ -304,6 +304,19 @@ async function handleIncomingMessage(from: string, message: string, imageData?: 
     }
   } catch (error) {
     log('[Agent] Error al procesar mensaje:', error);
+    
+    // Enviar mensaje de error al usuario en lugar de fallar silenciosamente
+    const errorMessage = 'Lo siento, ocurrió un error interno al procesar tu mensaje. Por favor, intenta de nuevo en unos minutos.';
+    
+    logMessage(from, fullMessage, errorMessage);
+    
+    if (isConnected()) {
+      try {
+        await sendMessage(from, errorMessage);
+      } catch (sendError) {
+        log('[Agent] Error al enviar mensaje de error:', sendError);
+      }
+    }
   }
 }
 
@@ -321,6 +334,33 @@ app.get('/health', (_req, res) => {
     code: 200,
     message: 'Servidor funcionando',
   });
+});
+
+app.get('/health/opencode', async (_req, res) => {
+  try {
+    const configured = isOpenCodeConfigured();
+    const serverAvailable = configured ? await isOpenCodeServerAvailable() : false;
+    
+    res.json({
+      success: serverAvailable,
+      error: !serverAvailable,
+      status: serverAvailable ? 200 : 503,
+      code: serverAvailable ? 200 : 503,
+      message: serverAvailable ? 'OpenCode disponible' : 'OpenCode no disponible',
+      configured,
+      serverAvailable,
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      error: true,
+      status: 503,
+      code: 503,
+      message: 'Error al verificar OpenCode',
+      configured: isOpenCodeConfigured(),
+      serverAvailable: false,
+    });
+  }
 });
 
 app.use('/api/whatsapp', whatsappRoutes);

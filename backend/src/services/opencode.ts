@@ -174,6 +174,12 @@ export async function getOrCreateSession(phone: string): Promise<{ sessionId: st
     throw new Error('OpenCode no inicializado');
   }
 
+  // Verificar si el servidor está disponible antes de proceder
+  const serverAvailable = await isOpenCodeServerAvailable();
+  if (!serverAvailable) {
+    throw new Error('Servidor de OpenCode no disponible');
+  }
+
   // Verificar si existe sesión en DB
   const existing = getSessionByPhone(phone);
   if (existing) {
@@ -307,7 +313,17 @@ export async function sendToSession(phone: string, message: string): Promise<str
       errStr.includes('Unable to connect');
 
     if (isConnectionError) {
-      log(`[OpenCode] Sesión no disponible para ${fromShort} (${errStr.substring(0, 80)}...). Descartando y reintentando...`);
+      log(`[OpenCode] Sesión no disponible para ${fromShort} (${errStr.substring(0, 80)}...). Verificando servidor...`);
+      
+      // Verificar si el servidor está disponible
+      const serverAvailable = await isOpenCodeServerAvailable();
+      
+      if (!serverAvailable) {
+        log(`[OpenCode] Servidor no disponible en puerto ${OPENCODE_PORT}. No se puede hacer auto-recovery.`);
+        return `Lo siento, el servicio de IA no está disponible en este momento. Por favor, intenta más tarde o contacta al administrador del sistema.`;
+      }
+      
+      log(`[OpenCode] Servidor disponible, descartando sesión expirada y reintentando...`);
       
       // Descartar sesión expirada
       deleteSession(phone);
@@ -338,7 +354,7 @@ export async function sendToSession(phone: string, message: string): Promise<str
         return extractTextFromResponse(responseParts);
       } catch (retryErr) {
         log('[OpenCode] Error en reintento:', retryErr);
-        throw new Error(`Error incluso después de crear nueva sesión: ${retryErr}`);
+        return `Lo siento, ocurrió un error al procesar tu mensaje. El servicio de IA está temporalmente indisponible. Por favor, intenta de nuevo en unos minutos.`;
       }
     }
 
@@ -348,8 +364,20 @@ export async function sendToSession(phone: string, message: string): Promise<str
   }
 }
 
-/**
- * Verifica si OpenCode está configurado.
+/** * Verifica si el servidor de OpenCode está disponible.
+ */
+export async function isOpenCodeServerAvailable(): Promise<boolean> {
+  if (!client) return false;
+  
+  try {
+    await client.global.health();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** * Verifica si OpenCode está configurado.
  * 
  * @returns true si hay API key configurada
  * 
