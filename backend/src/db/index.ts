@@ -63,6 +63,8 @@ export async function initDb(): Promise<Database> {
 
   // Seed: bloquear números y IDs no deseados
   db.run("INSERT OR IGNORE INTO whitelist (phone, is_blacklist, enabled) VALUES ('status@broadcast', 1, 1)");
+  // Seed: wildcard para bloquear todo por defecto
+  db.run("INSERT OR IGNORE INTO whitelist (phone, is_blacklist, enabled) VALUES ('*', 1, 1)");
   saveDb();
 
   saveDb();

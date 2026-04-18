@@ -74,14 +74,36 @@ export function broadcastNewMessage(message: { from: string; body: string; respo
 // CONFIGURACIÓN
 // ============================================================
 
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const isProd = NODE_ENV === 'production';
+const ENV = process.env.ENV || '';
+const isProd = ENV.toLowerCase() === 'prod';
 
 /**
- * Logger conditional según entorno.
+ * Logger para acciones del sistema (siempre visible)
  */
 function log(...args: unknown[]) {
-  if (!isProd) console.log(...args);
+  if (isProd) {
+    console.log(...args.map(maskPhoneNumbers));
+  } else {
+    console.log(...args);
+  }
+}
+
+/**
+ * Logger para información sensible (solo en desarrollo)
+ */
+function logSensitive(...args: unknown[]) {
+  if (isProd) return;
+  console.log(...args);
+}
+
+/**
+ * Enmascara números de teléfono en mensajes de log (solo PROD)
+ * 7209281757@c.us → 720*******@c.us
+ * 7200009281757@g.us → 720*******@g.us
+ */
+function maskPhoneNumbers(arg: unknown): unknown {
+  if (typeof arg !== 'string') return arg;
+  return arg.replace(/\b(\d{3})(\d+)@([cg])\.us\b/g, '$1*******@$3.us');
 }
 
 // Credenciales admin
@@ -131,9 +153,8 @@ app.use(express.json());
 
 // Logging de requests (solo en desarrollo)
 app.use((req, _res, next) => {
-  if (!isProd) {
-    console.log(`[REQ] ${req.method} ${req.url}`);
-  }
+  if (isProd) return next();
+  log(`[REQ] ${req.method} ${req.url}`);
   next();
 });
 
@@ -221,28 +242,62 @@ app.use('/api/config', requireAuth, configRoutes);
  * @param from - Número remitente
  * @param message - Mensaje recibido
  */
-async function handleIncomingMessage(from: string, message: string) {
+async function handleIncomingMessage(from: string, message: string, imageData?: string) {
+  log('[Msg] incoming: iniciando');
+  
   if (!isOpenCodeConfigured()) {
     return;
   }
 
+  const fromShort = from.replace(/^\+/, '').replace(/^521/, '');
+
   const whitelist = getWhitelist() as Array<{
-    phone: string; 
-    prompt: string | null; 
-    enabled: number; 
-    is_blacklist: number 
+    phone: string;
+    prompt: string | null;
+    enabled: number;
+    is_blacklist: number
   }>;
+
+  const wildcardBlocked = whitelist.some(w => w.phone === '*' && w.is_blacklist && w.enabled);
   
   const entry = whitelist.find(w => w.phone === from);
   
-  if (entry && (entry.is_blacklist || !entry.enabled)) {
+  const isAllowed = entry && !entry.is_blacklist && entry.enabled;
+
+  let filterReason = '';
+  let willRespond = false;
+
+  if (wildcardBlocked && !isAllowed) {
+    filterReason = 'Bloqueado: wildcard activo sin whitelist';
+  } else if (entry && (entry.is_blacklist || !entry.enabled)) {
+    filterReason = entry.is_blacklist ? 'En blacklist' : 'Deshabilitado';
+  } else if (!entry && wildcardBlocked) {
+    filterReason = 'Sin whitelist y wildcard activo';
+  } else {
+    willRespond = true;
+  }
+
+  log(`[Msg] incoming from ${fromShort}: ${willRespond ? 'RESPONDIENDO' : 'FILTRADO'} - ${filterReason}`);
+
+  logSensitive(`[Msg] body: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+  if (imageData) {
+    logSensitive(`[Msg] imagen: ${imageData.substring(0, 50)}...`);
+  }
+
+  if (!willRespond) {
     return;
   }
 
+  let fullMessage = message;
+  if (imageData) {
+    fullMessage = `${message}\n\n[Imagen: ${imageData}]`;
+  }
+
   try {
-    const response = await sendToSession(from, message);
+    log(`[Agent] Procesando mensaje de ${fromShort}...`);
+    const response = await sendToSession(from, fullMessage);
     
-    logMessage(from, message, response);
+    logMessage(from, fullMessage, response);
     
     if (isConnected()) {
       await sendMessage(from, response);
@@ -296,6 +351,7 @@ app.use((_req, res) => {
 // INICIO
 // ============================================================
 
+log('[System] iniciando');
 app.listen(PORT, () => {
   log(`Servidor corriendo en http://localhost:${PORT}`);
 });
