@@ -189,8 +189,9 @@ export function updateSessionPhone(phone: string, opencodeSessionId: string): { 
 export function deleteSession(phone: string): { changes: number } {
   if (!db) return { changes: 0 };
   db.run('DELETE FROM sessions WHERE phone = ?', [phone]);
+  const changes = db.getRowsModified();
   saveDb();
-  return { changes: db.getRowsModified() };
+  return { changes };
 }
 
 /**

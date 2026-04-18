@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test, beforeEach, beforeAll } from 'bun:test';
-import { initDb, getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, setConfig, getConfig, logMessage, getMessagesLog, getSessionByPhone, createSession, clearDb } from '../db/index';
+import { initDb, getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, setConfig, getConfig, logMessage, getMessagesLog, getSessionByPhone, createSession, deleteSession, clearDb } from '../db/index';
 
 describe('Database', () => {
   beforeAll(async () => {
@@ -110,6 +110,46 @@ describe('Database', () => {
       const session = getSessionByPhone('+5219999999999');
       
       expect(session).toBeNull();
+    });
+
+    test('createSession con INSERT OR REPLACE debe actualizar si existe', () => {
+      createSession('+5215555555555', 'ses_test123');
+      const session1 = getSessionByPhone('+5215555555555');
+      expect(session1?.opencode_session_id).toBe('ses_test123');
+      
+      // Llamar de nuevo con mismo teléfono pero diferente sessionId
+      createSession('+5215555555555', 'ses_updated999');
+      const session2 = getSessionByPhone('+5215555555555');
+      
+      expect(session2?.opencode_session_id).toBe('ses_updated999');
+      // INSERT OR REPLACE actualiza el valor sin duplicar registros
+      expect(session2?.phone).toBe('+5215555555555');
+    });
+
+    test('deleteSession debe eliminar una sesión', () => {
+      createSession('+5215555555555', 'ses_test123');
+      expect(getSessionByPhone('+5215555555555')).toBeDefined();
+      
+      const result = deleteSession('+5215555555555');
+      
+      expect(result.changes).toBeGreaterThan(0);
+      expect(getSessionByPhone('+5215555555555')).toBeNull();
+    });
+
+    test('deleteSession debe retornar changes=0 si no existe', () => {
+      const result = deleteSession('+5219999999999');
+      
+      expect(result.changes).toBe(0);
+    });
+
+    test('deleteSession debe limpiar solo la sesión especificada', () => {
+      createSession('+5215555555555', 'ses_test123');
+      createSession('+5215555555556', 'ses_test456');
+      
+      deleteSession('+5215555555555');
+      
+      expect(getSessionByPhone('+5215555555555')).toBeNull();
+      expect(getSessionByPhone('+5215555555556')).toBeDefined();
     });
   });
 });
