@@ -11,9 +11,9 @@ fi
 
 echo "Running backend tests"
 cd "$REPO_ROOT/backend"
-yarn test
+bun test
 
 echo "Building backend"
-yarn build
+bun run build
 
 echo "Backend ready. Version bump deferred until after merging to master"
