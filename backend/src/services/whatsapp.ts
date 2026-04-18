@@ -28,15 +28,36 @@ import { setConfig, logMessage } from '../db/index.js';
 // CONFIGURACIÓN
 // ============================================================
 
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const isProd = NODE_ENV === 'production';
+const ENV = process.env.ENV || '';
+const isProd = ENV.toLowerCase() === 'prod';
 
 /**
- * Logger conditional según entorno.
- * Solo imprime en desarrollo.
+ * Logger para acciones del sistema (siempre visible)
  */
 function log(...args: unknown[]) {
-  if (!isProd) console.log(...args);
+  if (isProd) {
+    console.log(...args.map(maskPhoneNumbers));
+  } else {
+    console.log(...args);
+  }
+}
+
+/**
+ * Logger para información sensible (solo en desarrollo)
+ */
+function logSensitive(...args: unknown[]) {
+  if (isProd) return;
+  console.log(...args);
+}
+
+/**
+ * Enmascara números de teléfono en mensajes de log (solo PROD)
+ * 7209281757@c.us → 720*******@c.us
+ * 7200009281757@g.us → 720*******@g.us
+ */
+function maskPhoneNumbers(arg: unknown): unknown {
+  if (typeof arg !== 'string') return arg;
+  return arg.replace(/\b(\d{3})(\d+)@([cg])\.us\b/g, '$1*******@$3.us');
 }
 
 // ============================================================
@@ -45,7 +66,7 @@ function log(...args: unknown[]) {
 
 let client: Client | null = null;
 let status: WhatsAppStatus = { connected: false };
-let onMessageCallback: ((from: string, message: string) => void) | null = null;
+let onMessageCallback: ((from: string, message: string, imageData?: string) => void) | null = null;
 
 const sessionPath = path.join(import.meta.dir, '../../data/whatsapp-sessions');
 
@@ -59,11 +80,11 @@ const sessionPath = path.join(import.meta.dir, '../../data/whatsapp-sessions');
  * @param callback - Función a ejecutar cuando llegue un mensaje
  * 
  * @example
- * setMessageHandler((from, message) => {
+ * setMessageHandler((from, message, imageData) => {
  *   console.log(`De ${from}: ${message}`);
  * });
  */
-export function setMessageHandler(callback: (from: string, message: string) => void) {
+export function setMessageHandler(callback: (from: string, message: string, imageData?: string) => void) {
   onMessageCallback = callback;
 }
 
@@ -153,13 +174,34 @@ async function initClient(): Promise<Client> {
     if (msg.fromMe) return;
     
     const from = msg.from;
-    const body = msg.body;
+    let body = msg.body;
+    let imageData: string | undefined;
     
-    log(`[WhatsApp] Mensaje de ${from}: ${body}`);
+    // Si es imagen, descargar y obtener caption
+    if (msg.type === 'image' || msg.hasMedia) {
+      try {
+        const media = await msg.downloadMedia();
+        if (media) {
+          imageData = `data:${media.mimetype};base64,${media.data}`;
+          const hasText = msg.body && msg.body.length > 0;
+          if (hasText) {
+            body = `[Imagen] ${msg.body}`;
+          } else {
+            body = `[Imagen] (sin descripción)`;
+          }
+          logSensitive(`[WhatsApp] Imagen recibida de ${from}, mime: ${media.mimetype}, size: ${media.data.length}`);
+        }
+      } catch (err) {
+        logSensitive(`[WhatsApp] Error al descargar imagen: ${err}`);
+        body = '[Imagen] (error al procesar)';
+      }
+    }
+    
+    logSensitive(`[WhatsApp] Mensaje de ${from}: ${body}`);
     logMessage(from, body);
     
     if (onMessageCallback) {
-      onMessageCallback(from, body);
+      onMessageCallback(from, body, imageData);
     }
   });
 
@@ -248,7 +290,7 @@ export async function sendMessage(to: string, message: string): Promise<boolean>
 
   try {
     await client.sendMessage(to, message);
-    log(`[WhatsApp] Enviado a ${to}: ${message}`);
+    log(`[WhatsApp] Enviado a ${to}: ✓`);
     return true;
   } catch (error) {
     log(`[WhatsApp] Error al enviar:`, error);

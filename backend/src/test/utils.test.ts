@@ -29,23 +29,23 @@ describe('Types - WhatsAppStatus', () => {
 
 describe('Utils - Logger', () => {
   test('Logger en development', () => {
-    const original = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'development';
+    const original = process.env.ENV;
+    process.env.ENV = 'development';
     
-    const isProd = process.env.NODE_ENV === 'production';
+    const isProd = (process.env.ENV || '').toLowerCase() === 'prod';
     expect(isProd).toBe(false);
     
-    process.env.NODE_ENV = original;
+    process.env.ENV = original;
   });
 
-  test('Logger en production', () => {
-    const original = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+  test('Logger en prod', () => {
+    const original = process.env.ENV;
+    process.env.ENV = 'prod';
     
-    const isProd = process.env.NODE_ENV === 'production';
+    const isProd = (process.env.ENV || '').toLowerCase() === 'prod';
     expect(isProd).toBe(true);
     
-    process.env.NODE_ENV = original;
+    process.env.ENV = original;
   });
 });
 
