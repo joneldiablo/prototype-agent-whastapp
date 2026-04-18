@@ -12,24 +12,19 @@ Guía para resolver problemas comunes y seguir mejores prácticas.
 ```
 
 **Causas:**
-- Variable `OPENCODE_API_KEY` no configurada
 - OpenCode tardó en conectar
 - Error al iniciar el servidor
 
 **Soluciones:**
 
 ```bash
-# 1. Verificar .env
-grep OPENCODE_API_KEY .env
+# 1. Verificar puerto de OpenCode
+grep OPENCODE_PORT .env
 
-# 2. Asegurar que está configurada
-# En .env:
-OPENCODE_API_KEY=sk-xxxxx
-
-# 3. Reiniciar servidor
+# 2. Reiniciar servidor
 bun start
 
-# 4. Ver logs
+# 3. Ver logs
 tail -f logs/*.log
 ```
 

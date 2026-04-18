@@ -120,7 +120,7 @@ const PORT = process.env.PORT || 3000;
 // ============================================================
 
 import { initDb, getWhitelist, logMessage as dbLogMessage } from './db/index.js';
-import { initOpenCode, sendToSession, isOpenCodeConfigured, isOpenCodeServerAvailable } from './services/opencode.js';
+import { initOpenCode, sendToSession, isOpenCodeServerAvailable } from './services/opencode.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './services/whatsapp.js';
 import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
 
@@ -233,7 +233,7 @@ app.use('/api/config', requireAuth, configRoutes);
  * Maneja mensajes entrantes de WhatsApp.
  * 
  * Flujo:
- * 1. Verifica que OpenCode esté configurado
+ * 1. Verifica disponibilidad de OpenCode local
  * 2. Verifica whitelist (si enabled y no en blacklist)
  * 3. Envía mensaje a OpenCode y obtiene respuesta
  * 4. Guarda en historial
@@ -244,10 +244,6 @@ app.use('/api/config', requireAuth, configRoutes);
  */
 async function handleIncomingMessage(from: string, message: string, imageData?: string) {
   log('[Msg] incoming: iniciando');
-  
-  if (!isOpenCodeConfigured()) {
-    return;
-  }
 
   const fromShort = from.replace(/^\+/, '').replace(/^521/, '');
 
@@ -338,8 +334,7 @@ app.get('/health', (_req, res) => {
 
 app.get('/health/opencode', async (_req, res) => {
   try {
-    const configured = isOpenCodeConfigured();
-    const serverAvailable = configured ? await isOpenCodeServerAvailable() : false;
+    const serverAvailable = await isOpenCodeServerAvailable();
     
     res.json({
       success: serverAvailable,
@@ -347,7 +342,6 @@ app.get('/health/opencode', async (_req, res) => {
       status: serverAvailable ? 200 : 503,
       code: serverAvailable ? 200 : 503,
       message: serverAvailable ? 'OpenCode disponible' : 'OpenCode no disponible',
-      configured,
       serverAvailable,
     });
   } catch (error) {
@@ -357,7 +351,6 @@ app.get('/health/opencode', async (_req, res) => {
       status: 503,
       code: 503,
       message: 'Error al verificar OpenCode',
-      configured: isOpenCodeConfigured(),
       serverAvailable: false,
     });
   }

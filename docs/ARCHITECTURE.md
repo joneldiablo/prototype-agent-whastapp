@@ -313,7 +313,7 @@ Histórico completo de conversaciones.
 2. whatsapp-web.js detecta evento 'message'
 3. handleIncomingMessage() activado
    │
-   ├─ Validar que OpenCode esté configurado
+   ├─ Verificar disponibilidad de OpenCode local
    ├─ Verificar whitelist
    │  ├─ ¿Está bloqueado globalmente (wildcard)?
    │  ├─ ¿Está en blacklist?
@@ -654,7 +654,6 @@ docker-compose down
 PORT=3000
 ENV=prod|dev
 OPENCODE_USER_PASSWORD=admin:password
-OPENCODE_API_KEY=sk-xxxxx
 OPENCODE_PORT=4099
 SYSTEM_PROMPT="Tu prompt aquí"
 TOKEN_EXPIRY_HOURS=24
@@ -767,7 +766,6 @@ bun test
 ### Requeridas
 ```env
 OPENCODE_USER_PASSWORD=usuario:contraseña
-OPENCODE_API_KEY=sk-...
 ```
 
 ### Opcionales
