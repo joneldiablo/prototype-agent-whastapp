@@ -94,6 +94,15 @@ function isConnectionError(err: unknown): boolean {
   );
 }
 
+function isRecoverableOpenCodeError(err: unknown): boolean {
+  const errStr = String(err);
+  return (
+    isConnectionError(err) ||
+    errStr.includes('Servidor de OpenCode no disponible') ||
+    errStr.includes('OpenCode no inicializado')
+  );
+}
+
 async function recoverOpenCodeClient(): Promise<boolean> {
   try {
     log('[OpenCode] Intentando reinicializar cliente/servidor...');
@@ -190,12 +199,6 @@ export async function getOrCreateSession(phone: string): Promise<{ sessionId: st
     throw new Error('OpenCode no inicializado');
   }
 
-  // Verificar si el servidor está disponible antes de proceder
-  const serverAvailable = await isOpenCodeServerAvailable();
-  if (!serverAvailable) {
-    throw new Error('Servidor de OpenCode no disponible');
-  }
-
   // Verificar si existe sesión en DB
   const existing = getSessionByPhone(phone);
   if (existing) {
@@ -204,6 +207,10 @@ export async function getOrCreateSession(phone: string): Promise<{ sessionId: st
       logSensitive(`[OpenCode] Sesión válida encontrada para ${phone.replace(/^\+/, '').replace(/^521/, '')}`);
       return { sessionId: existing.opencode_session_id, isNew: false };
     } catch (err) {
+      if (isRecoverableOpenCodeError(err)) {
+        throw err;
+      }
+
       // Sesión no existe en OpenCode o está expirada
       const errMsg = String(err);
       logSensitive(`[OpenCode] Sesión expirada/no válida para ${phone}, descartando: ${errMsg.substring(0, 100)}`);
@@ -322,7 +329,7 @@ export async function sendToSession(phone: string, message: string): Promise<str
   } catch (err) {
     const errStr = String(err);
 
-    if (isConnectionError(err)) {
+    if (isRecoverableOpenCodeError(err)) {
       log(`[OpenCode] Error de conexión para ${fromShort} (${errStr.substring(0, 80)}...). Verificando servidor...`);
 
       let serverAvailable = await isOpenCodeServerAvailable();
