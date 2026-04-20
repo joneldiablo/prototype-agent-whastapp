@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test, beforeEach, beforeAll } from 'bun:test';
-import { initDb, getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, setConfig, getConfig, logMessage, getMessagesLog, getSessionByPhone, createSession, deleteSession, clearDb } from '../db/index';
+import { initDb, getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, setConfig, getConfig, logMessage, getMessagesLog, getSessionByPhone, createSession, deleteSession, clearDb, getUserPermissions, updateUserPermissions } from '../db/index';
 
 describe('Database', () => {
   beforeAll(async () => {
@@ -145,11 +145,74 @@ describe('Database', () => {
     test('deleteSession debe limpiar solo la sesión especificada', () => {
       createSession('+5215555555555', 'ses_test123');
       createSession('+5215555555556', 'ses_test456');
-      
+
       deleteSession('+5215555555555');
-      
+
       expect(getSessionByPhone('+5215555555555')).toBeNull();
       expect(getSessionByPhone('+5215555555556')).toBeDefined();
+    });
+  });
+
+  describe('UserPermissions', () => {
+    test('getUserPermissions retorna null para teléfono no existente', async () => {
+      const perms = getUserPermissions('+5210000000000');
+      expect(perms).toBeNull();
+    });
+
+    test('getUserPermissions retorna permisos por defecto (todos false)', async () => {
+      await addToWhitelist('+5215555555555', 'Test user');
+
+      const perms = getUserPermissions('+5215555555555');
+
+      expect(perms).toBeDefined();
+      expect(perms?.can_read).toBe(false);
+      expect(perms?.can_create).toBe(false);
+      expect(perms?.can_modify).toBe(false);
+      expect(perms?.can_delete).toBe(false);
+      expect(perms?.can_request_permissions).toBe(false);
+    });
+
+    test('updateUserPermissions actualiza permisos específicos', async () => {
+      const result = await addToWhitelist('+5215555555555', 'Test user');
+      const id = result.lastInsertRowid;
+
+      await updateUserPermissions(id, {
+        can_read: true,
+        can_create: true,
+      });
+
+      const perms = getUserPermissions('+5215555555555');
+
+      expect(perms?.can_read).toBe(true);
+      expect(perms?.can_create).toBe(true);
+      expect(perms?.can_modify).toBe(false);
+      expect(perms?.can_delete).toBe(false);
+    });
+
+    test('updateUserPermissions retorna 0 changes para id inválido', async () => {
+      const result = await updateUserPermissions(99999, { can_read: true });
+
+      expect(result.changes).toBe(0);
+    });
+
+    test('updateUserPermissions no actualiza si no hay cambios', async () => {
+      const result = await updateUserPermissions(1, {});
+
+      expect(result.changes).toBe(0);
+    });
+
+    test('getWhitelist incluye columnas de permisos', async () => {
+      await addToWhitelist('+5215555555555', 'Test user');
+      await updateUserPermissions(1, { can_read: true, can_create: true });
+
+      const whitelist = getWhitelist();
+      const entry = whitelist[0];
+
+      expect(entry).toHaveProperty('can_read');
+      expect(entry).toHaveProperty('can_create');
+      expect(entry).toHaveProperty('can_modify');
+      expect(entry).toHaveProperty('can_delete');
+      expect(entry).toHaveProperty('can_request_permissions');
     });
   });
 });

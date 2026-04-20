@@ -35,6 +35,16 @@
     .error { color: #dc3545; margin-top: 10px; }
     .success { color: #28a745; margin-top: 10px; }
     .loading { opacity: 0.5; pointer-events: none; }
+    .perm-toggle { width: 40px; height: 20px; appearance: none; background: #dc3545; border-radius: 10px; position: relative; cursor: pointer; }
+    .perm-toggle::before { content: ''; position: absolute; width: 16px; height: 16px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: 0.2s; }
+    .perm-toggle:checked { background: #28a745; }
+    .perm-toggle:checked::before { left: 22px; }
+    .perm-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+    .perm-read { background: #17a2b8; }
+    .perm-create { background: #ffc107; }
+    .perm-modify { background: #fd7e14; }
+    .perm-delete { background: #dc3545; }
+    .perm-request { background: #6f42c1; }
   </style>
 </head>
 <body>
@@ -112,9 +122,18 @@
         </label>
       </div>
       <button class="btn btn-primary" id="btn-add">Agregar Contacto</button>
+      <div style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 6px;">
+        <p style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Permisos por defecto (todos Desactivados):</p>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap; font-size: 11px;">
+          <label style="color: #17a2b8;"><input type="checkbox" id="new-can_read"> Leer</label>
+          <label style="color: #ffc107;"><input type="checkbox" id="new-can_create"> Crear</label>
+          <label style="color: #fd7e14;"><input type="checkbox" id="new-can_modify"> Modificar</label>
+          <label style="color: #dc3545;"><input type="checkbox" id="new-can_delete"> Eliminar</label>
+          <label style="color: #6f42c1;"><input type="checkbox" id="new-can_request_permissions"> Permisos</label>
+        </div>
+      </div>
       <p style="font-size: 12px; color: #666; margin-top: 10px;">
-        <b> Permitido:</b> Puede chatear con el agente | 
-        <b> Bloqueado:</b> No recibe respuestas (ignorado)
+        <b> Permitido:</b> Puede chatear | <b> Bloqueado:</b> No recibe respuestas
       </p>
     </div>
 
@@ -124,6 +143,11 @@
           <tr>
             <th>Teléfono</th>
             <th>Prompt</th>
+            <th>Leer</th>
+            <th>Crear</th>
+            <th>Modificar</th>
+            <th>Eliminar</th>
+            <th>Permisos</th>
             <th>Estado</th>
             <th>Activo</th>
             <th>Acciones</th>
@@ -251,14 +275,19 @@
             const statusBg = isBlocked ? '#f8d7da' : '#d4edda';
             
             tr.innerHTML = `
-              <td>${entry.phone}</td>
-              <td>${entry.prompt ? '<span style="color: #007bff;">✓ Custom</span>' : '<span style="color: #999;">-</span>'}</td>
+              <td style="font-family: monospace; font-size: 12px;">${entry.phone}</td>
+              <td>${entry.prompt ? '<span style="color: #007bff;">✓</span>' : '<span style="color: #999;">-</span>'}</td>
+              <td><input type="checkbox" class="perm-toggle perm-read" ${entry.can_read ? 'checked' : ''} onchange="updatePermission(${entry.id}, 'can_read', this.checked)" title=" puede leer archivos"></td>
+              <td><input type="checkbox" class="perm-toggle perm-create" ${entry.can_create ? 'checked' : ''} onchange="updatePermission(${entry.id}, 'can_create', this.checked)" title=" puede crear archivos"></td>
+              <td><input type="checkbox" class="perm-toggle perm-modify" ${entry.can_modify ? 'checked' : ''} onchange="updatePermission(${entry.id}, 'can_modify', this.checked)" title=" puede modificar archivos"></td>
+              <td><input type="checkbox" class="perm-toggle perm-delete" ${entry.can_delete ? 'checked' : ''} onchange="updatePermission(${entry.id}, 'can_delete', this.checked)" title=" puede eliminar archivos" ${isBlocked ? 'disabled' : ''}></td>
+              <td><input type="checkbox" class="perm-toggle perm-request" ${entry.can_request_permissions ? 'checked' : ''} onchange="updatePermission(${entry.id}, 'can_request_permissions', this.checked)" title=" puede solicitar permisos"></td>
               <td><span class="status-badge" style="background: ${statusBg}; color: ${statusColor};">${statusText}</span></td>
               <td><input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="updateEntry(${entry.id}, 'enabled', this.checked)"></td>
               <td>
                 ${isBlocked 
-                  ? `<button class="btn btn-success" style="font-size: 11px; padding: 4px 8px;" onclick="updateEntry(${entry.id}, 'is_blacklist', false)">✓ Permitir</button>`
-                  : `<button class="btn" style="font-size: 11px; padding: 4px 8px; background: #dc3545; color: white;" onclick="updateEntry(${entry.id}, 'is_blacklist', true)">Bloquear</button>`
+                  ? `<button class="btn btn-success" style="font-size: 11px; padding: 4px 8px;" onclick="updateEntry(${entry.id}, 'is_blacklist', false)">✓</button>`
+                  : `<button class="btn" style="font-size: 11px; padding: 4px 8px; background: #dc3545; color: white;" onclick="updateEntry(${entry.id}, 'is_blacklist', true)">✕</button>`
                 }
                 <button class="btn btn-danger" onclick="deleteEntry(${entry.id})">✕</button>
               </td>
@@ -409,17 +438,30 @@
       const type = document.querySelector('input[name="new-type"]:checked').value;
       const is_blacklist = type === 'blacklist';
       
+      const permissions = {
+        can_read: document.getElementById('new-can_read').checked,
+        can_create: document.getElementById('new-can_create').checked,
+        can_modify: document.getElementById('new-can_modify').checked,
+        can_delete: document.getElementById('new-can_delete').checked,
+        can_request_permissions: document.getElementById('new-can_request_permissions').checked,
+      };
+      
       if (!phone) return alert('El teléfono es requerido');
       
       try {
         const res = await fetch(`${API_BASE}/api/whitelist`, {
           method: 'POST',
           headers: getHeaders(),
-          body: JSON.stringify({ phone, prompt, is_blacklist })
+          body: JSON.stringify({ phone, prompt, is_blacklist, permissions })
         });
         await res.json();
         document.getElementById('new-phone').value = '';
         document.getElementById('new-prompt').value = '';
+        document.getElementById('new-can_read').checked = false;
+        document.getElementById('new-can_create').checked = false;
+        document.getElementById('new-can_modify').checked = false;
+        document.getElementById('new-can_delete').checked = false;
+        document.getElementById('new-can_request_permissions').checked = false;
         loadWhitelist();
       } catch (e) { console.error(e); }
     });
@@ -432,6 +474,18 @@
           body: JSON.stringify({ [field]: value })
         });
         loadWhitelist();
+      } catch (e) { console.error(e); }
+    };
+
+    window.updatePermission = async (id, permission, value) => {
+      try {
+        await fetch(`${API_BASE}/api/whitelist/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify({ 
+            permissions: { [permission]: value }
+          })
+        });
       } catch (e) { console.error(e); }
     };
 

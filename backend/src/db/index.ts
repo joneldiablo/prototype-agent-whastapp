@@ -19,41 +19,35 @@ export async function initDb(): Promise<Database> {
     db = new SQL.Database();
   }
 
-  db.run(`
+db.run(`
     CREATE TABLE IF NOT EXISTS whitelist (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       phone TEXT NOT NULL UNIQUE,
       prompt TEXT,
       enabled INTEGER DEFAULT 1,
       is_blacklist INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS system_config (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT NOT NULL UNIQUE,
-      value TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS messages_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      from_number TEXT NOT NULL,
-      message TEXT NOT NULL,
-      response TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      phone TEXT NOT NULL UNIQUE,
-      opencode_session_id TEXT NOT NULL,
+      can_read INTEGER DEFAULT 0,
+      can_create INTEGER DEFAULT 0,
+      can_modify INTEGER DEFAULT 0,
+      can_delete INTEGER DEFAULT 0,
+      can_request_permissions INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  const columnsCheck = db.exec("PRAGMA table_info(whitelist)");
+  const existingColumns = columnsCheck[0]?.values?.map((row: unknown[]) => row[1]) || [];
+  const newColumns = ['can_read', 'can_create', 'can_modify', 'can_delete', 'can_request_permissions'];
+
+  for (const col of newColumns) {
+    if (!existingColumns.includes(col)) {
+      try {
+        db.run(`ALTER TABLE whitelist ADD COLUMN ${col} INTEGER DEFAULT 0`);
+      } catch {
+      }
+    }
+  }
 
   const configCheck = db.exec("SELECT COUNT(*) as count FROM system_config WHERE key = 'system_prompt'");
   if (configCheck[0]?.values[0]?.[0] === 0) {
@@ -120,9 +114,83 @@ export function updateWhitelistEntry(id: number, data: { phone?: string; prompt?
   return { changes: db.getRowsModified() };
 }
 
-export function deleteFromWhitelist(id: number) {
+export function deleteFromWhitelist(id: number): { changes: number } {
   if (!db) return { changes: 0 };
   db.run('DELETE FROM whitelist WHERE id = ?', [id]);
+  saveDb();
+  return { changes: db.getRowsModified() };
+}
+
+export interface UserPermissions {
+  can_read: boolean;
+  can_create: boolean;
+  can_modify: boolean;
+  can_delete: boolean;
+  can_request_permissions: boolean;
+}
+
+const DEFAULT_PERMISSIONS: UserPermissions = {
+  can_read: false,
+  can_create: false,
+  can_modify: false,
+  can_delete: false,
+  can_request_permissions: false,
+};
+
+export function getUserPermissions(phone: string): UserPermissions | null {
+  if (!db) return null;
+  const result = db.exec(
+    'SELECT can_read, can_create, can_modify, can_delete, can_request_permissions FROM whitelist WHERE phone = ?',
+    [phone]
+  );
+  if (!result[0] || !result[0].values[0]) return null;
+
+  const row = result[0].values[0];
+  return {
+    can_read: row[0] === 1,
+    can_create: row[1] === 1,
+    can_modify: row[2] === 1,
+    can_delete: row[3] === 1,
+    can_request_permissions: row[4] === 1,
+  };
+}
+
+export function updateUserPermissions(
+  id: number,
+  perms: Partial<UserPermissions>
+): { changes: number } {
+  if (!db) return { changes: 0 };
+
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  if (perms.can_read !== undefined) {
+    updates.push('can_read = ?');
+    values.push(perms.can_read ? 1 : 0);
+  }
+  if (perms.can_create !== undefined) {
+    updates.push('can_create = ?');
+    values.push(perms.can_create ? 1 : 0);
+  }
+  if (perms.can_modify !== undefined) {
+    updates.push('can_modify = ?');
+    values.push(perms.can_modify ? 1 : 0);
+  }
+  if (perms.can_delete !== undefined) {
+    updates.push('can_delete = ?');
+    values.push(perms.can_delete ? 1 : 0);
+  }
+  if (perms.can_request_permissions !== undefined) {
+    updates.push('can_request_permissions = ?');
+    values.push(perms.can_request_permissions ? 1 : 0);
+  }
+
+  if (updates.length === 0) return { changes: 0 };
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(id);
+
+  db.run(`UPDATE whitelist SET ${updates.join(', ')} WHERE id = ?`, values);
   saveDb();
   return { changes: db.getRowsModified() };
 }

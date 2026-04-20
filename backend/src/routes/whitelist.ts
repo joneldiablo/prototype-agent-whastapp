@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import type { ApiResponse, WhitelistEntry } from '../types/index.js';
-import { getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist } from '../db/index.js';
+import type { ApiResponse, WhitelistEntry, UserPermissions } from '../types/index.js';
+import { getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, updateUserPermissions } from '../db/index.js';
 
 const router = Router();
 
@@ -17,9 +17,24 @@ router.get('/', (_req, res: Response<ApiResponse<WhitelistEntry[]>>) => {
   });
 });
 
-router.post('/', (req: Request<Record<string, never>, unknown, { phone: string; prompt?: string; is_blacklist?: boolean }>, res: Response<ApiResponse>) => {
-  const { phone, prompt, is_blacklist } = req.body;
-  
+router.post(
+  '/',
+  (
+    req: Request<
+      Record<string, never>,
+      unknown,
+      {
+        phone: string;
+        prompt?: string;
+        is_blacklist?: boolean;
+        permissions?: Partial<UserPermissions>;
+      }
+    >,
+    res: Response<ApiResponse>
+  >
+) => {
+  const { phone, prompt, is_blacklist, permissions } = req.body;
+
   if (!phone) {
     return res.json({
       success: false,
@@ -29,9 +44,14 @@ router.post('/', (req: Request<Record<string, never>, unknown, { phone: string; 
       message: 'El número de teléfono es requerido',
     });
   }
-  
+
   try {
     const result = addToWhitelist(phone, prompt, is_blacklist ? 1 : 0);
+
+    if (permissions && result.lastInsertRowid) {
+      updateUserPermissions(result.lastInsertRowid, permissions);
+    }
+
     res.json({
       success: true,
       error: false,
@@ -53,7 +73,7 @@ router.post('/', (req: Request<Record<string, never>, unknown, { phone: string; 
 
 router.put('/:id', (req: Request<{ id: string }>, res: Response<ApiResponse>) => {
   const id = parseInt(req.params.id, 10);
-  
+
   if (isNaN(id)) {
     return res.json({
       success: false,
@@ -63,13 +83,23 @@ router.put('/:id', (req: Request<{ id: string }>, res: Response<ApiResponse>) =>
       message: 'ID inválido',
     });
   }
-  
-  const { phone, prompt, enabled, is_blacklist } = req.body;
-  
+
+  const { phone, prompt, enabled, is_blacklist, permissions } = req.body as {
+    phone?: string;
+    prompt?: string;
+    enabled?: boolean;
+    is_blacklist?: boolean;
+    permissions?: Partial<UserPermissions>;
+  };
+
   try {
     const result = updateWhitelistEntry(id, { phone, prompt, enabled, is_blacklist });
-    
-    if (result.changes === 0) {
+
+    if (permissions) {
+      updateUserPermissions(id, permissions);
+    }
+
+    if (result.changes === 0 && (!permissions || Object.keys(permissions).length === 0)) {
       return res.json({
         success: false,
         error: true,
@@ -78,7 +108,7 @@ router.put('/:id', (req: Request<{ id: string }>, res: Response<ApiResponse>) =>
         message: 'Entrada no encontrada',
       });
     }
-    
+
     res.json({
       success: true,
       error: false,

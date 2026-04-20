@@ -17,7 +17,7 @@
 
 import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import type { Part } from '@opencode-ai/sdk';
-import { getSessionByPhone, createSession, getConfig, deleteSession } from '../db/index.js';
+import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions } from '../db/index.js';
 import { createServer } from 'net';
 
 // ============================================================
@@ -305,11 +305,22 @@ export async function sendToSession(phone: string, message: string): Promise<str
 
     logSensitive('[OpenCode] Prompt completo:', fullPrompt.substring(0, 200) + '...');
 
+    const userPerms = getUserPermissions(phone);
+    const permission: Record<string, unknown> = {
+      read: userPerms?.can_read ? 'allow' : 'deny',
+      write: userPerms?.can_create ? 'allow' : 'deny',
+      edit: userPerms?.can_modify ? 'allow' : 'deny',
+      bash: userPerms?.can_modify ? { '*': 'allow' } : { '*': 'deny' },
+    };
+
+    logSensitive('[OpenCode] Permisos aplicados:', JSON.stringify(permission));
+
     const response = await client.session.prompt({
       path: { id: sessionId },
       body: {
         system: fullPrompt,
         parts,
+        permission,
       },
     });
 
@@ -356,11 +367,20 @@ export async function sendToSession(phone: string, message: string): Promise<str
         let retryPrompt = buildSystemPrompt(dbPrompt, appVersion);
         retryPrompt += '\n\nNota: Este es el primer mensaje de esta sesión. El contexto se ha reiniciado. Saluda al usuario amablemente y pregúntale en qué puedes ayudarle.';
         
+        const retryPerms = getUserPermissions(phone);
+        const retryPermission: Record<string, unknown> = {
+          read: retryPerms?.can_read ? 'allow' : 'deny',
+          write: retryPerms?.can_create ? 'allow' : 'deny',
+          edit: retryPerms?.can_modify ? 'allow' : 'deny',
+          bash: retryPerms?.can_modify ? { '*': 'allow' } : { '*': 'deny' },
+        };
+
         const retryResponse = await client.session.prompt({
           path: { id: newSessionId },
           body: {
             system: retryPrompt,
             parts,
+            permission: retryPermission,
           },
         });
 
