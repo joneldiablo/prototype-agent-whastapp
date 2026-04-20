@@ -466,6 +466,7 @@
       </div>
 
       <div class="modal-actions">
+        <button class="btn btn-secondary" id="btn-reset-chat">🔄 Reiniciar Chat</button>
         <button class="btn btn-update-action" id="btn-update-prompt">Actualizar</button>
         <button class="btn btn-unblock-action" id="btn-modal-unblock">Permitir</button>
         <button class="btn btn-block-action" id="btn-modal-block">Bloquear</button>
@@ -520,24 +521,8 @@
         <div class="search-results" id="search-results">
           <div class="empty-state">Ingresa al menos 2 caracteres</div>
         </div>
-        <div class="contact-detail hidden" id="contact-detail">
-          <div class="info-row">
-            <span class="info-label">ID</span>
-            <span class="info-value" id="detail-id"></span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Nombre</span>
-            <span id="detail-name">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Teléfono</span>
-            <span id="detail-phone">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Tipo</span>
-            <span id="detail-type"></span>
-          </div>
-          <button class="btn btn-primary" id="btn-add-from-search" style="margin-top: 12px; width: 100%;">Agregar a Lista</button>
+        <div id="search-message" style="padding: 12px; background: #d4edda; color: #155724; border-radius: 6px; margin-top: 12px; display: none;">
+          ✓ Contacto cargado en el formulario. Configura y presiona "Agregar"
         </div>
       </div>
     </details>
@@ -910,6 +895,22 @@
       closeContactModal();
     });
 
+    document.getElementById('btn-reset-chat').addEventListener('click', async () => {
+      if (!currentContactId) return;
+      if (!confirm('¿Reiniciar la conversación? Esto borrará el historial del chat.')) return;
+      const res = await fetch(`${API_BASE}/api/whitelist/${currentContactId}/reset-chat`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✓ Conversación reiniciada');
+        closeContactModal();
+      } else {
+        alert('Error: ' + data.message);
+      }
+    });
+
     document.getElementById('btn-modal-delete').addEventListener('click', async () => {
       if (!currentContactId) return;
       if (!confirm('¿Eliminar este contacto?')) return;
@@ -982,28 +983,25 @@
               phone: el.dataset.phone,
               isGroup: el.dataset.isGroup === 'true'
             };
-            document.getElementById('detail-id').textContent = selectedContact.id;
-            document.getElementById('detail-name').textContent = selectedContact.name || '-';
-            document.getElementById('detail-phone').textContent = selectedContact.phone || '-';
-            document.getElementById('detail-type').textContent = selectedContact.isGroup ? 'Grupo' : 'Usuario';
-            document.getElementById('contact-detail').classList.remove('hidden');
+            // Cargar en el formulario de agregar
+            document.getElementById('new-phone').value = selectedContact.id;
+            document.getElementById('new-prompt').value = '';
+            document.getElementById('type-whitelist').checked = true;
+            document.getElementById('new-can_read').checked = false;
+            document.getElementById('new-can_create').checked = false;
+            document.getElementById('new-can_modify').checked = false;
+            document.getElementById('new-can_delete').checked = false;
+            document.getElementById('new-can_request_permissions').checked = false;
+            
+            // Mostrar mensaje y scroll al formulario
+            document.getElementById('search-message').style.display = 'block';
+            document.getElementById('search-message').textContent = '✓ ' + (selectedContact.name || selectedContact.id) + ' cargado. Configura y presiona "Agregar"';
+            document.getElementById('search-message').scrollIntoView({ behavior: 'smooth', block: 'center' });
           });
         });
       } else {
         container.innerHTML = '<div class="empty-state">Sin resultados</div>';
       }
-    });
-
-    document.getElementById('btn-add-from-search').addEventListener('click', async () => {
-      if (!selectedContact) return;
-      await fetch(`${API_BASE}/api/whitelist`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ phone: selectedContact.id, prompt: '', is_blacklist: false })
-      });
-      loadWhitelist();
-      alert('Agregado: ' + selectedContact.id);
-      document.getElementById('contact-detail').classList.add('hidden');
     });
 
     document.getElementById('btn-add').addEventListener('click', async () => {
@@ -1029,9 +1027,12 @@
 
       document.getElementById('new-phone').value = '';
       document.getElementById('new-prompt').value = '';
+      document.getElementById('type-whitelist').checked = true;
+      document.getElementById('search-message').style.display = 'none';
       ['new-can_read', 'new-can_create', 'new-can_modify', 'new-can_delete', 'new-can_request_permissions'].forEach(id => {
         document.getElementById(id).checked = false;
       });
+      selectedContact = null;
       loadWhitelist();
     });
 
