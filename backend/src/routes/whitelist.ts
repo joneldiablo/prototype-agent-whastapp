@@ -31,8 +31,7 @@ router.post(
       }
     >,
     res: Response<ApiResponse>
-  >
-) => {
+  ) => {
   const { phone, prompt, is_blacklist, permissions } = req.body;
 
   if (!phone) {
