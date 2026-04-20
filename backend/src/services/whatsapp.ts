@@ -18,9 +18,10 @@
 
 import { Client, LocalAuth, type Message } from 'whatsapp-web.js';
 import QRCode from 'qrcode';
-import { rm } from 'fs/promises';
+import { rm, mkdir, writeFile } from 'fs/promises';
 import { exec } from 'child_process';
 import path from 'path';
+import crypto from 'crypto';
 import type { WhatsAppStatus } from '../types/index.js';
 import { setConfig, logMessage } from '../db/index.js';
 
@@ -66,7 +67,13 @@ function maskPhoneNumbers(arg: unknown): unknown {
 
 let client: Client | null = null;
 let status: WhatsAppStatus = { connected: false };
-let onMessageCallback: ((from: string, message: string, imageData?: string) => void) | null = null;
+let onMessageCallback: ((from: string, message: string, files: FileInfo[]) => void) | null = null;
+
+export interface FileInfo {
+  path: string;
+  filename: string;
+  mime: string;
+}
 
 const sessionPath = path.join(import.meta.dir, '../../data/whatsapp-sessions');
 
@@ -84,7 +91,7 @@ const sessionPath = path.join(import.meta.dir, '../../data/whatsapp-sessions');
  *   console.log(`De ${from}: ${message}`);
  * });
  */
-export function setMessageHandler(callback: (from: string, message: string, imageData?: string) => void) {
+export function setMessageHandler(callback: (from: string, message: string, files: FileInfo[]) => void) {
   onMessageCallback = callback;
 }
 
@@ -118,6 +125,58 @@ async function cleanupStaleSession(): Promise<void> {
       await rm(lockFile, { force: true });
     } catch {}
   }
+}
+
+// ============================================================
+// FUNCIONES PRIVADAS (Archivos)
+// ============================================================
+
+const filesPath = path.join(import.meta.dir, '../../files');
+
+async function ensureFilesDir(): Promise<void> {
+  await mkdir(filesPath, { recursive: true });
+}
+
+function getHash4(): string {
+  return crypto.randomBytes(2).toString('hex');
+}
+
+function getFileExtension(mime: string): string {
+  const map: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'audio/ogg': 'ogg',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'video/mp4': 'mp4',
+    'video/3gpp': '3gp',
+    'application/pdf': 'pdf',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-word': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/zip': 'zip',
+  };
+  return map[mime] || 'bin';
+}
+
+async function saveMediaFile(
+  media: { data: string; mimetype: string },
+  timestamp: number
+): Promise<FileInfo> {
+  await ensureFilesDir();
+  const hash = getHash4();
+  const ext = getFileExtension(media.mimetype);
+  const filename = `${hash}-${timestamp}.${ext}`;
+  const filepath = path.join(filesPath, filename);
+  await writeFile(filepath, Buffer.from(media.data, 'base64'));
+  return {
+    path: filepath,
+    filename,
+    mime: media.mimetype,
+  };
 }
 
 // ============================================================
@@ -175,25 +234,35 @@ async function initClient(): Promise<Client> {
     
     const from = msg.from;
     let body = msg.body;
-    let imageData: string | undefined;
+    let files: FileInfo[] = [];
+    const timestamp = Date.now();
     
-    // Si es imagen, descargar y obtener caption
-    if (msg.type === 'image' || msg.hasMedia) {
+    // Si tiene media (imagen, video, audio, documento), descargar y guardar
+    if (msg.hasMedia) {
       try {
         const media = await msg.downloadMedia();
         if (media) {
-          imageData = `data:${media.mimetype};base64,${media.data}`;
-          const hasText = msg.body && msg.body.length > 0;
+          const fileInfo = await saveMediaFile(media, timestamp);
+          files.push(fileInfo);
+          
+          const typeLabel = {
+            image: 'Imagen',
+            video: 'Video',
+            audio: 'Audio',
+            document: 'Documento',
+          }[msg.type] || 'Archivo';
+          
+          const hasText = body && body.length > 0;
           if (hasText) {
-            body = `[Imagen] ${msg.body}`;
+            body = `[${typeLabel}] ${body}`;
           } else {
-            body = `[Imagen] (sin descripción)`;
+            body = `[${typeLabel}] (sin descripción)`;
           }
-          logSensitive(`[WhatsApp] Imagen recibida de ${from}, mime: ${media.mimetype}, size: ${media.data.length}`);
+          logSensitive(`[WhatsApp] ${typeLabel} recibido de ${from}, mime: ${media.mimetype}, filename: ${fileInfo.filename}`);
         }
       } catch (err) {
-        logSensitive(`[WhatsApp] Error al descargar imagen: ${err}`);
-        body = '[Imagen] (error al procesar)';
+        logSensitive(`[WhatsApp] Error al procesar archivo: ${err}`);
+        body = '[Archivo] (error al procesar)';
       }
     }
     
@@ -201,7 +270,7 @@ async function initClient(): Promise<Client> {
     logMessage(from, body);
     
     if (onMessageCallback) {
-      onMessageCallback(from, body, imageData);
+      onMessageCallback(from, body, files);
     }
   });
 

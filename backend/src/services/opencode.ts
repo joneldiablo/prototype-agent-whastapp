@@ -278,22 +278,20 @@ export async function sendToSession(phone: string, message: string): Promise<str
   // Obtener prompt global del sistema
   const systemPrompt = getConfig('system_prompt');
 
-  // Verificar si el mensaje contiene una imagen en base64
-  const imageMatch = message.match(/\[Imagen: (data:image\/(\w+);base64,.+)\]/);
+  // Verificar si el mensaje contiene archivos
+  const fileMatches = message.matchAll(/\[Archivo: ([^\]]+)\]/g);
   
   let parts: Part[] = [];
   let textContent = message;
   
-  if (imageMatch) {
-    const imageData = imageMatch[1];
-    const mimeType = `image/${imageMatch[2]}`;
-    textContent = message.replace(/\[Imagen: data:image\/\w+;base64,.+\]/, '').trim();
+  for (const match of fileMatches) {
+    const filePath = match[1];
+    textContent = textContent.replace(match[0], '').trim();
     
-    // Agregar imagen como file part (formato correcto para OpenCode/AI SDK)
+    // Agregar archivo como file part
     parts.push({
       type: 'file',
-      mime: mimeType,
-      url: imageData,
+      url: filePath,
     } as Part);
   }
   

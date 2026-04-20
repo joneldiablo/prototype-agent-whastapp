@@ -121,7 +121,7 @@ const PORT = process.env.PORT || 3000;
 
 import { initDb, getWhitelist, logMessage as dbLogMessage } from './db/index.js';
 import { initOpenCode, sendToSession, isOpenCodeServerAvailable } from './services/opencode.js';
-import { connectWhatsApp, setMessageHandler, sendMessage, isConnected } from './services/whatsapp.js';
+import { connectWhatsApp, setMessageHandler, sendMessage, isConnected, type FileInfo } from './services/whatsapp.js';
 import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
 
 // ============================================================
@@ -242,7 +242,7 @@ app.use('/api/config', requireAuth, configRoutes);
  * @param from - Número remitente
  * @param message - Mensaje recibido
  */
-async function handleIncomingMessage(from: string, message: string, imageData?: string) {
+async function handleIncomingMessage(from: string, message: string, files: FileInfo[]) {
   log('[Msg] incoming: iniciando');
 
   const fromShort = from.replace(/^\+/, '').replace(/^521/, '');
@@ -276,17 +276,30 @@ async function handleIncomingMessage(from: string, message: string, imageData?: 
   log(`[Msg] incoming from ${fromShort}: ${willRespond ? 'RESPONDIENDO' : 'FILTRADO'} - ${filterReason}`);
 
   logSensitive(`[Msg] body: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
-  if (imageData) {
-    logSensitive(`[Msg] imagen: ${imageData.substring(0, 50)}...`);
+  if (files.length > 0) {
+    logSensitive(`[Msg] archivos: ${files.map(f => f.filename).join(', ')}`);
   }
 
   if (!willRespond) {
     return;
   }
 
+  const hasText = message.length > 0 && !message.startsWith('[');
+
+  if (files.length > 0 && !hasText) {
+    const fileNames = files.map(f => f.filename).join(', ');
+    log(`[Agent] Enviando nombres de archivos a ${fromShort}: ${fileNames}`);
+    logMessage(from, message, fileNames);
+    if (isConnected()) {
+      await sendMessage(from, fileNames);
+    }
+    return;
+  }
+
   let fullMessage = message;
-  if (imageData) {
-    fullMessage = `${message}\n\n[Imagen: ${imageData}]`;
+  if (files.length > 0) {
+    const filesInfo = files.map(f => `[Archivo: ${f.path}]`).join('\n');
+    fullMessage = message ? `${message}\n\n${filesInfo}` : filesInfo;
   }
 
   try {
@@ -301,7 +314,6 @@ async function handleIncomingMessage(from: string, message: string, imageData?: 
   } catch (error) {
     log('[Agent] Error al procesar mensaje:', error);
     
-    // Enviar mensaje de error al usuario en lugar de fallar silenciosamente
     const errorMessage = 'Lo siento, ocurrió un error interno al procesar tu mensaje. Por favor, intenta de nuevo en unos minutos.';
     
     logMessage(from, fullMessage, errorMessage);
