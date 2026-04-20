@@ -17,7 +17,7 @@
 
 import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import type { Part } from '@opencode-ai/sdk';
-import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions } from '../db/index.js';
+import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions, getWhitelist } from '../db/index.js';
 import { createServer } from 'net';
 
 // ============================================================

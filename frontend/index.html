@@ -371,8 +371,19 @@
 
     .modal-section { margin-bottom: 16px; }
     .modal-section h3 { font-size: 14px; color: var(--gray); margin-bottom: 8px; }
-    .modal-actions { display: flex; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-    .modal-actions .btn { flex: 1; }
+    .modal-actions { 
+      display: grid; 
+      grid-template-columns: repeat(2, 1fr); 
+      gap: 8px; 
+      margin-top: 16px; 
+      padding-top: 16px; 
+      border-top: 1px solid var(--border); 
+    }
+    .modal-actions .btn { width: 100%; }
+    @media (min-width: 1400px) {
+      .modal-actions { display: flex; }
+      .modal-actions .btn { flex: 1; }
+    }
   </style>
 </head>
 <body>
@@ -536,7 +547,7 @@
         </div>
         <div class="form-group">
           <label for="new-prompt">Prompt (opcional)</label>
-          <input type="text" id="new-prompt" placeholder="Prompt personalizado">
+          <textarea id="new-prompt" rows="3" placeholder="Prompt personalizado para este contacto"></textarea>
         </div>
         <div class="form-group">
           <label>Tipo</label>
