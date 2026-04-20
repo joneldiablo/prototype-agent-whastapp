@@ -61,16 +61,23 @@ function logSensitive(...args: unknown[]) {
 }
 
 /**
- * Construye el prompt completo concatenando el de entorno + el de BD.
- * @param dbPrompt Prompt de la base de datos
+ * Construye el prompt completo del sistema.
+ * 
+ * @param customPrompt Prompt personalizado del contacto (prioridad alta)
+ * @param systemPrompt Prompt global del sistema
  * @param version Versión actual del sistema
  * @returns Prompt concatenado
  */
-function buildSystemPrompt(dbPrompt: string | null, version: string): string {
+function buildSystemPrompt(customPrompt: string | null | undefined, systemPrompt: string | null, version: string): string {
   let basePrompt = SYSTEM_PROMPT_DEFAULT.replace(/\$\{version\}/g, version);
   
-  if (dbPrompt && dbPrompt.trim()) {
-    return basePrompt + '\n\n' + dbPrompt.trim();
+  // Prioridad: prompt personalizado del contacto > prompt global del sistema
+  if (customPrompt && customPrompt.trim()) {
+    return basePrompt + '\n\n' + customPrompt.trim();
+  }
+  
+  if (systemPrompt && systemPrompt.trim()) {
+    return basePrompt + '\n\n' + systemPrompt.trim();
   }
   
   return basePrompt;
@@ -263,8 +270,13 @@ export async function sendToSession(phone: string, message: string): Promise<str
 
   const fromShort = phone.replace(/^\+/, '').replace(/^521/, '');
 
-  // Obtener prompt de BD y construir prompt completo
-  const dbPrompt = getConfig('system_prompt');
+  // Obtener prompt personalizado del contacto en whitelist
+  const whitelist = getWhitelist();
+  const contactEntry = whitelist.find(w => w.phone === phone);
+  const customPrompt = contactEntry?.prompt;
+
+  // Obtener prompt global del sistema
+  const systemPrompt = getConfig('system_prompt');
 
   // Verificar si el mensaje contiene una imagen en base64
   const imageMatch = message.match(/\[Imagen: (data:image\/(\w+);base64,.+)\]/);
@@ -298,7 +310,7 @@ export async function sendToSession(phone: string, message: string): Promise<str
   try {
     const { sessionId, isNew } = await getOrCreateSession(phone);
 
-    let fullPrompt = buildSystemPrompt(dbPrompt, appVersion);
+    let fullPrompt = buildSystemPrompt(customPrompt, systemPrompt, appVersion);
     if (isNew) {
       fullPrompt += '\n\nNota: Este es el primer mensaje de esta sesión. El contexto se ha reiniciado. Saluda al usuario amablemente y pregúntale en qué puedes ayudarle.';
     }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { ApiResponse, WhitelistEntry, UserPermissions } from '../types/index.js';
-import { getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, updateUserPermissions } from '../db/index.js';
+import { getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, updateUserPermissions, deleteSession } from '../db/index.js';
 
 const router = Router();
 
@@ -93,6 +93,14 @@ router.put('/:id', (req: Request<{ id: string }>, res: Response<ApiResponse>) =>
 
   try {
     const result = updateWhitelistEntry(id, { phone, prompt, enabled, is_blacklist });
+
+    // Si se actualizó el prompt, reiniciar la sesión para que use el nuevo prompt
+    if (prompt !== undefined) {
+      const entry = getWhitelist().find(e => e.id === id);
+      if (entry) {
+        deleteSession(entry.phone);
+      }
+    }
 
     if (permissions) {
       updateUserPermissions(id, permissions);
