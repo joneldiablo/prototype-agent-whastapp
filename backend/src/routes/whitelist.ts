@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { ApiResponse, WhitelistEntry, UserPermissions } from '../types/index.js';
-import { getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, updateUserPermissions, deleteSession } from '../db/index.js';
+import { getWhitelist, addToWhitelist, updateWhitelistEntry, deleteFromWhitelist, updateUserPermissions, deleteSession, createSession } from '../db/index.js';
 
 const router = Router();
 
@@ -176,6 +176,47 @@ router.delete('/:id', (req: Request<{ id: string }>, res: Response<ApiResponse>)
       message: error instanceof Error ? error.message : 'Error al eliminar entrada',
     });
   }
+});
+
+router.post('/:id/reset-chat', (req: Request<{ id: string }>, res: Response<ApiResponse>) => {
+  const id = parseInt(req.params.id, 10);
+
+  if (isNaN(id)) {
+    return res.json({
+      success: false,
+      error: true,
+      status: 400,
+      code: 400,
+      message: 'ID inválido',
+    });
+  }
+
+  const entries = getWhitelist();
+  const entry = entries.find(e => e.id === id);
+
+  if (!entry) {
+    return res.json({
+      success: false,
+      error: true,
+      status: 404,
+      code: 404,
+      message: 'Contacto no encontrado',
+    });
+  }
+
+  deleteSession(entry.phone);
+
+  const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  createSession(entry.phone, newSessionId);
+
+  res.json({
+    success: true,
+    error: false,
+    status: 200,
+    code: 200,
+    message: 'Conversación reiniciada',
+    data: { newSessionId },
+  });
 });
 
 export default router;
