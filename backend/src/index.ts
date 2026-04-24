@@ -119,8 +119,8 @@ const PORT = process.env.PORT || 3000;
 // IMPORTS (DB & Services)
 // ============================================================
 
-import { initDb, getWhitelist, logMessage as dbLogMessage, getUserPermissions } from './db/index.js';
-import { initOpenCode, sendToSession, isOpenCodeServerAvailable } from './services/opencode.js';
+import { initDb, getWhitelist, logMessage as dbLogMessage, getUserPermissions, addPendingPermission, removePendingPermission, getPendingPermission, hasPendingPermission } from './db/index.js';
+import { initOpenCode, sendToSession, isOpenCodeServerAvailable, onPermissionAsked } from './services/opencode.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected, type FileInfo } from './services/whatsapp.js';
 import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
 
@@ -132,6 +132,23 @@ await mkdir('./data', { recursive: true });
 await initDb();
 await initOpenCode(APP_VERSION);
 await connectWhatsApp();
+
+// Configurar callback para permisos
+onPermissionAsked(async (phone: string, requestId: string, permission: string, patterns: string[]) => {
+  log(`[Permission] Solicitado: ${permission} para ${phone}`);
+  addPendingPermission(phone, requestId, permission, patterns);
+  
+  const patternsStr = patterns.join(', ') || 'comando';
+  const message = `🔐 *Permiso requerido*\n\nEl modelo quiere *${permission}* para: ${patternsStr}\n\nResponde *YES* para aprobar una vez o *NOT* para denegar.`;
+  
+  if (isConnected()) {
+    try {
+      await sendMessage(phone, message);
+    } catch (err) {
+      log('[Permission] Error enviando mensaje:', err);
+    }
+  }
+});
 
 // Wrapper para guardar mensaje y hacer broadcast
 function logMessage(from: string, message: string, response?: string) {
@@ -246,6 +263,60 @@ async function handleIncomingMessage(from: string, message: string, files: FileI
   log('[Msg] incoming: iniciando');
 
   const fromShort = from.replace(/^\+/, '').replace(/^521/, '');
+  const messageUpper = message.toUpperCase().trim();
+
+  // ============================================================
+  // VERIFICAR SI HAY PERMISO PENDIENTE
+  // ============================================================
+  
+  if (hasPendingPermission(from)) {
+    const pending = getPendingPermission(from);
+    
+    if (pending) {
+      // Procesar respuesta del usuario
+      let reply: 'once' | 'always' | 'reject' = 'reject';
+      let responseMsg = '';
+      
+      if (messageUpper === 'YES') {
+        reply = 'once';
+        responseMsg = '✅ Permiso concedido (una vez). Continuando...';
+        log(`[Permission] Usuario ${fromShort} aprueba ${pending.permission}`);
+      } else {
+        reply = 'reject';
+        responseMsg = '❌ Permiso denegado. La acción no se ejecutará.';
+        log(`[Permission] Usuario ${fromShort} deniega ${pending.permission}`);
+      }
+      
+      // IMPORTAR cliente de opencode para responder
+      const { getOpenCodeClient, getOpenCodePort } = await import('./services/opencode.js');
+      const client = getOpenCodeClient();
+      
+      if (client) {
+        try {
+          await fetch(`http://localhost:${getOpenCodePort()}/permission/${pending.request_id}/reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reply })
+          });
+        } catch (err) {
+          log('[Permission] Error respondiendo:', err);
+        }
+      }
+      
+      removePendingPermission(from, pending.request_id);
+      logMessage(from, message, responseMsg);
+      
+      if (isConnected()) {
+        await sendMessage(from, responseMsg);
+      }
+      
+      return;
+    }
+  }
+
+  // ============================================================
+  // FLUJO NORMAL DE MENSAJES
+  // ============================================================
 
   const whitelist = getWhitelist() as Array<{
     phone: string;

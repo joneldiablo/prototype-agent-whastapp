@@ -19,7 +19,8 @@ export async function initDb(): Promise<Database> {
     db = new SQL.Database();
   }
 
-db.run(`
+  // Crear tablas primero
+  db.run(`
     CREATE TABLE IF NOT EXISTS whitelist (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       phone TEXT NOT NULL UNIQUE,
@@ -35,6 +36,20 @@ db.run(`
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS pending_permissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      permission TEXT NOT NULL,
+      patterns TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(phone, request_id)
+    );
+  `);
+
+  // Verificar y agregar columnas a whitelist
 
   const columnsCheck = db.exec("PRAGMA table_info(whitelist)");
   const existingColumns = columnsCheck[0]?.values?.map((row: unknown[]) => row[1]) || [];
@@ -271,5 +286,65 @@ export async function clearDb() {
   db.run('DELETE FROM system_config');
   db.run('DELETE FROM messages_log');
   db.run('DELETE FROM sessions');
+  db.run('DELETE FROM pending_permissions');
   saveDb();
+}
+
+// ============================================================
+// Pending Permissions (for interactive permission requests)
+// ============================================================
+
+export interface PendingPermission {
+  id: number;
+  phone: string;
+  request_id: string;
+  permission: string;
+  patterns: string;
+  created_at: string;
+}
+
+export function addPendingPermission(phone: string, requestId: string, permission: string, patterns: string[]) {
+  if (!db) return;
+  db.run(
+    'INSERT OR REPLACE INTO pending_permissions (phone, request_id, permission, patterns, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
+    [phone, requestId, permission, JSON.stringify(patterns)]
+  );
+  saveDb();
+}
+
+export function getPendingPermission(phone: string): PendingPermission | null {
+  if (!db) return null;
+  const result = db.exec(
+    'SELECT id, phone, request_id, permission, patterns, created_at FROM pending_permissions WHERE phone = ? ORDER BY id DESC LIMIT 1',
+    [phone]
+  );
+  if (!result[0] || !result[0].values[0]) return null;
+  
+  const row = result[0].values[0];
+  return {
+    id: row[0] as number,
+    phone: row[1] as string,
+    request_id: row[2] as string,
+    permission: row[3] as string,
+    patterns: row[4] as string,
+    created_at: row[5] as string,
+  };
+}
+
+export function removePendingPermission(phone: string, requestId?: string): { changes: number } {
+  if (!db) return { changes: 0 };
+  if (requestId) {
+    db.run('DELETE FROM pending_permissions WHERE phone = ? AND request_id = ?', [phone, requestId]);
+  } else {
+    db.run('DELETE FROM pending_permissions WHERE phone = ?', [phone]);
+  }
+  const changes = db.getRowsModified();
+  saveDb();
+  return { changes };
+}
+
+export function hasPendingPermission(phone: string): boolean {
+  if (!db) return false;
+  const result = db.exec('SELECT COUNT(*) FROM pending_permissions WHERE phone = ?', [phone]);
+  return (result[0]?.values[0]?.[0] as number) > 0;
 }

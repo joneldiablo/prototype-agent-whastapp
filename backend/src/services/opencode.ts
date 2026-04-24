@@ -17,7 +17,7 @@
 
 import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import type { Part } from '@opencode-ai/sdk';
-import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions, getWhitelist } from '../db/index.js';
+import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions, getWhitelist, addPendingPermission } from '../db/index.js';
 import { createServer } from 'net';
 import { execSync } from 'child_process';
 import { writeFile, mkdir } from 'fs/promises';
@@ -282,8 +282,50 @@ export async function initOpenCode(version?: string): Promise<void> {
     client = oc.client;
     serverClose = oc.server.close;
     log('[OpenCode] Cliente inicializado');
+    
+    startPermissionEventListener();
   } catch (err) {
     log('[OpenCode] Error al conectar:', err);
+  }
+}
+
+let permissionCallback: ((phone: string, requestId: string, permission: string, patterns: string[]) => void) | null = null;
+
+export function onPermissionAsked(callback: (phone: string, requestId: string, permission: string, patterns: string[]) => void) {
+  permissionCallback = callback;
+}
+
+async function startPermissionEventListener() {
+  if (!client || !permissionCallback) return;
+  
+  try {
+    const events = await client.global.event();
+    if (!events.stream) {
+      log('[OpenCode] No hay stream de eventos disponible');
+      return;
+    }
+    
+    log('[OpenCode] Escuchando eventos de permisos...');
+    
+    for await (const rawEvent of events.stream) {
+      const event = (rawEvent as any);
+      const type = event.type;
+      
+      if (type === 'permission.asked') {
+        const props = event.properties || {};
+        const requestId = props.id || props.requestID;
+        const permission = props.permission || 'unknown';
+        const patterns = props.patterns || props.pattern || [];
+        
+        log(`[OpenCode] Permiso solicitado: ${permission} ${JSON.stringify(patterns)}`);
+        
+        if (permissionCallback) {
+          permissionCallback('', requestId, permission, patterns);
+        }
+      }
+    }
+  } catch (err) {
+    log('[OpenCode] Error en event listener:', err);
   }
 }
 
@@ -740,4 +782,12 @@ function extractTextFromResponse(parts: Part[]): string {
     }
   }
   return JSON.stringify(parts);
+}
+
+export function getOpenCodePort(): number {
+  return OPENCODE_PORT;
+}
+
+export function getOpenCodeClient(): any {
+  return client;
 }

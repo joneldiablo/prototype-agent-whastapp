@@ -43,3 +43,7 @@ export interface WhatsAppStatus {
   lastSync?: string;
   qrGenerated?: number;
 }
+
+export interface PendingPermissionResponse {
+  reply: 'once' | 'always' | 'reject';
+}
