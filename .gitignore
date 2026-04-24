@@ -3,3 +3,4 @@ node_modules
 data
 .wwebjs_cache
 /files
+tmp

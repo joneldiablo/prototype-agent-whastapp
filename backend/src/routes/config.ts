@@ -171,6 +171,16 @@ router.put('/timeout', (req: Request<Record<string, never>, unknown, { timeout: 
     });
   }
   
+  if (timeout > 3600000) {
+    return res.json({
+      success: false,
+      error: true,
+      status: 400,
+      code: 400,
+      message: 'Timeout máximo es 3600000ms (1 hora)',
+    });
+  }
+  
   setConfig('request_timeout', String(timeout));
   res.json({
     success: true,

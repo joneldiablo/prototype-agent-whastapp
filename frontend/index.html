@@ -532,8 +532,8 @@
       <div class="card">
         <div class="form-group">
           <label for="timeout-input">Tiempo máximo de espera (milsegundos)</label>
-          <input type="number" id="timeout-input" value="120000" min="10000" max="300000" step="10000" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
-          <small style="color: #666;">Mínimo: 10000ms (10s), Máximo: 300000ms (5min)</small>
+          <input type="number" id="timeout-input" value="120000" min="10000" max="3600000" step="10000" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+          <small style="color: #666;">Mínimo: 10000ms (10s), Máximo: 3600000ms (1 hora)</small>
         </div>
         <div style="margin-top: 12px;">
           <button class="btn btn-primary" id="btn-save-timeout">Guardar</button>
@@ -1042,8 +1042,8 @@
 
     document.getElementById('btn-save-timeout').addEventListener('click', async () => {
       const timeout = parseInt(document.getElementById('timeout-input').value, 10);
-      if (timeout < 10000 || timeout > 300000) {
-        document.getElementById('timeout-message').textContent = 'Mínimo 10s, máximo 5min';
+      if (timeout < 10000 || timeout > 3600000) {
+        document.getElementById('timeout-message').textContent = 'Mínimo 10s, máximo 1 hora';
         return;
       }
       const res = await fetch(`${API_BASE}/api/config/timeout`, {
