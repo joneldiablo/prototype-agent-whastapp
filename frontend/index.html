@@ -512,6 +512,37 @@
     </details>
 
     <details>
+      <summary>Modelo de IA</summary>
+      <div class="card">
+        <div class="form-group">
+          <label for="model-select">Seleccionar Modelo</label>
+          <select id="model-select" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+            <option value="">Cargando modelos...</option>
+          </select>
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="btn btn-primary" id="btn-save-model">Guardar</button>
+          <span id="model-message"></span>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Timeout (ms)</summary>
+      <div class="card">
+        <div class="form-group">
+          <label for="timeout-input">Tiempo máximo de espera (milsegundos)</label>
+          <input type="number" id="timeout-input" value="120000" min="10000" max="300000" step="10000" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+          <small style="color: #666;">Mínimo: 10000ms (10s), Máximo: 300000ms (5min)</small>
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="btn btn-primary" id="btn-save-timeout">Guardar</button>
+          <span id="timeout-message"></span>
+        </div>
+      </div>
+    </details>
+
+    <details>
       <summary>Prompt del Sistema</summary>
       <div class="card">
         <textarea id="system-prompt" rows="4" placeholder="Ingresa el prompt global del sistema..."></textarea>
@@ -720,6 +751,34 @@
         const data = await res.json();
         if (data.success && data.data?.prompt) {
           document.getElementById('system-prompt').value = data.data.prompt;
+        }
+      } catch (e) {}
+    }
+
+    async function loadModels() {
+      try {
+        const res = await fetch(`${API_BASE}/api/config/models`, { headers: getHeaders() });
+        const data = await res.json();
+        const select = document.getElementById('model-select');
+        
+        if (data.success && data.data) {
+          select.innerHTML = data.data.map(m => `<option value="${m}">${m}</option>`).join('');
+          
+          const modelRes = await fetch(`${API_BASE}/api/config/model`, { headers: getHeaders() });
+          const modelData = await modelRes.json();
+          if (modelData.success && modelData.data?.model) {
+            select.value = modelData.data.model;
+          }
+        }
+      } catch (e) {}
+    }
+
+    async function loadTimeout() {
+      try {
+        const res = await fetch(`${API_BASE}/api/config/timeout`, { headers: getHeaders() });
+        const data = await res.json();
+        if (data.success && data.data?.timeout) {
+          document.getElementById('timeout-input').value = data.data.timeout;
         }
       } catch (e) {}
     }
@@ -968,6 +1027,36 @@
       msg.className = data.success ? 'success' : 'error';
     });
 
+    document.getElementById('btn-save-model').addEventListener('click', async () => {
+      const model = document.getElementById('model-select').value;
+      const res = await fetch(`${API_BASE}/api/config/model`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ model })
+      });
+      const data = await res.json();
+      const msg = document.getElementById('model-message');
+      msg.textContent = data.success ? '✓ Guardado' : data.message;
+      msg.className = data.success ? 'success' : 'error';
+    });
+
+    document.getElementById('btn-save-timeout').addEventListener('click', async () => {
+      const timeout = parseInt(document.getElementById('timeout-input').value, 10);
+      if (timeout < 10000 || timeout > 300000) {
+        document.getElementById('timeout-message').textContent = 'Mínimo 10s, máximo 5min';
+        return;
+      }
+      const res = await fetch(`${API_BASE}/api/config/timeout`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ timeout })
+      });
+      const data = await res.json();
+      const msg = document.getElementById('timeout-message');
+      msg.textContent = data.success ? '✓ Guardado' : data.message;
+      msg.className = data.success ? 'success' : 'error';
+    });
+
     let selectedContact = null;
 
     document.getElementById('btn-search').addEventListener('click', async () => {
@@ -1080,6 +1169,8 @@
 
     function loadAll() {
       loadSystemPrompt();
+      loadModels();
+      loadTimeout();
       loadWhitelist();
       loadMessages();
       checkStatus();

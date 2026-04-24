@@ -209,8 +209,13 @@ async function initClient(): Promise<Client> {
   // Evento: QR recibido
   client.on('qr', async (qr) => {
     const qrDataUrl = await QRCode.toDataURL(qr);
-    status = { ...status, qr: qrDataUrl };
+    status = { ...status, qr: qrDataUrl, qrGenerated: Date.now() };
     log('[WhatsApp] QR recibido. Escanea con tu teléfono.');
+  });
+
+  // Evento: Necesita actualizar QR (expiró el anterior)
+  client.on('auth_code_failure', async (failure) => {
+    log('[WhatsApp] QR expirado o inválido. Solicitando nuevo QR...');
   });
 
   // Evento: Cliente conectado
@@ -676,13 +681,14 @@ export function sanitizeForWhatsApp(text: string): string {
 
   return text
     .normalize('NFKC')
+    .replace(/[\r\n]+/g, '\n')
     .split('')
     .filter((char) => {
       const code = char.codePointAt(0) ?? 0;
       return allowedRanges.some(([start, end]) => code >= start && code <= end);
     })
     .join('')
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+    .replace(/[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '')
     .replace(/\u0000/g, '');
 }
 
@@ -764,17 +770,37 @@ export async function disconnectWhatsApp(): Promise<void> {
  * @example
  * const qr = await getQR();
  */
+const QR_EXPIRE_MS = 45000;
+
 export async function getQR(): Promise<string | null> {
-  if (status.qr) return status.qr;
+  const qrAge = status.qrGenerated ? Date.now() - status.qrGenerated : Infinity;
   
-  if (!client) {
-    const tempClient = await initClient();
-    await tempClient.initialize();
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    return status.qr || null;
+  if (status.qr && qrAge < QR_EXPIRE_MS) {
+    return status.qr;
   }
   
-  return null;
+  if (status.connected) {
+    return null;
+  }
+  
+  log('[WhatsApp] QR expirado o no existe. Regenerando...');
+  
+  if (client) {
+    try {
+      client.destroy();
+    } catch {}
+    client = null;
+  }
+  
+  try {
+    client = await initClient();
+    await client.initialize();
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    return status.qr || null;
+  } catch (err) {
+    log('[WhatsApp] Error al regenerar QR:', err);
+    return null;
+  }
 }
 
 export interface ContactSearchResult {

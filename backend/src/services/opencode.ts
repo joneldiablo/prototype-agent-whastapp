@@ -19,6 +19,9 @@ import { createOpencode, createOpencodeClient, type OpencodeClient } from '@open
 import type { Part } from '@opencode-ai/sdk';
 import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions, getWhitelist } from '../db/index.js';
 import { createServer } from 'net';
+import { execSync } from 'child_process';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
 
 // ============================================================
 // CONFIGURACIÓN
@@ -28,7 +31,100 @@ const OPENCODE_PORT = parseInt(process.env.OPENCODE_PORT || '4099', 10);
 const ENV = process.env.ENV || '';
 const SYSTEM_PROMPT_DEFAULT = process.env.SYSTEM_PROMPT || '';
 
+function getRequestTimeout(): number {
+  const timeoutStr = getConfig('request_timeout');
+  return timeoutStr ? parseInt(timeoutStr, 10) : 120000;
+}
+
+const AVAILABLE_MODELS = [
+  'opencode/big-pickle',
+  'opencode/claude-3-5-haiku',
+  'opencode/claude-opus-4-5',
+  'opencode/claude-opus-4-6',
+  'opencode/claude-opus-4-7',
+  'opencode/claude-sonnet-4-5',
+  'opencode/claude-sonnet-4-6',
+  'opencode/gpt-5',
+  'opencode/gpt-5.1',
+  'opencode/gpt-5.2',
+  'opencode/gpt-5.4',
+  'opencode/gpt-5.5',
+  'anthropic/claude-opus-4-5',
+  'anthropic/claude-opus-4-7',
+  'anthropic/claude-sonnet-4-5',
+  'google/gemini-2.5-pro',
+  'google/gemini-2.5-flash',
+  'google/gemma-3-27b-it',
+  'ollama/llama3.1',
+  'opencode/minimax-m2.5-free',
+];
+
+function parseModelString(modelStr: string): { providerID: string; modelID: string } {
+  const [providerID, modelID] = modelStr.split('/');
+  return { providerID: providerID || 'opencode', modelID: modelID || modelStr };
+}
+
+function getConfiguredModel(): string {
+  const model = getConfig('model');
+  return model || AVAILABLE_MODELS[0];
+}
+
+export async function getAvailableModels(): Promise<string[]> {
+  try {
+    const output = execSync('opencode models', { 
+      encoding: 'utf8', 
+      timeout: 30000,
+      maxBuffer: 1024 * 1024
+    });
+    
+    const models = output
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && !line.startsWith('=') && !line.includes('Models'));
+    
+    if (models.length > 0) {
+      return models;
+    }
+  } catch (err) {
+    log('[OpenCode] Error al obtener modelos:', err);
+  }
+  
+  return AVAILABLE_MODELS;
+}
+
 const isProd = ENV.toLowerCase() === 'prod';
+
+const TMP_DIR = path.join(process.cwd(), 'tmp');
+const LAST_RESPONSE_FILE = path.join(TMP_DIR, 'last-response.json');
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      log(`[OpenCode] Timeout en ${label} (${ms}ms)`);
+      reject(new Error(`Timeout: ${label}超过了${ms}ms`));
+    }, ms);
+    
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+async function saveLastResponse(data: any) {
+  try {
+    await mkdir(TMP_DIR, { recursive: true });
+    await writeFile(LAST_RESPONSE_FILE, JSON.stringify(data, null, 2));
+    log('[OpenCode] Response guardada en tmp/last-response.json');
+  } catch (err) {
+    log('[OpenCode] Error guardando response:', err);
+  }
+}
 
 /**
  * Verifica si un puerto está en uso.
@@ -270,7 +366,6 @@ export async function sendToSession(phone: string, message: string): Promise<str
 
   const fromShort = phone.replace(/^\+/, '').replace(/^521/, '');
 
-  // Obtener prompt personalizado del contacto en whitelist
   const whitelist = getWhitelist();
   const contactEntry = whitelist.find(w => w.phone === phone);
   const customPrompt = contactEntry?.prompt;
@@ -323,32 +418,195 @@ export async function sendToSession(phone: string, message: string): Promise<str
       bash: userPerms?.can_modify ? { '*': 'allow' } : { '*': 'deny' },
     };
 
+    const configuredModel = getConfiguredModel();
+    const modelObj = parseModelString(configuredModel);
+    
+    logSensitive('[OpenCode] Modelo configurado:', configuredModel, modelObj);
     logSensitive('[OpenCode] Permisos aplicados:', JSON.stringify(permission));
-
-    const response = await client.session.prompt({
-      path: { id: sessionId },
-      body: {
-        system: fullPrompt,
-        parts,
-        permission,
-      },
-    });
+    
+    const requestBody = {
+      model: modelObj,
+      system: fullPrompt,
+      parts,
+      permission,
+    };
+    
+    await saveLastResponse({ request: requestBody });
+    
+    let response: any;
+    try {
+      response = await withTimeout(
+        client.session.prompt({
+          path: { id: sessionId },
+          body: requestBody,
+        }),
+        getRequestTimeout(),
+        'session.prompt'
+      );
+    } catch (timeoutErr) {
+      const errStr = String(timeoutErr);
+      log('[OpenCode] Timeout o error en prompt:', errStr);
+      
+      if (errStr.includes('Timeout') || errStr.includes('超时')) {
+        deleteSession(phone);
+        try {
+          const { sessionId: newSessionId } = await getOrCreateSession(phone);
+          log('[OpenCode] Nueva sesión creada, reintentando...');
+          response = await withTimeout(
+            client.session.prompt({
+              path: { id: newSessionId },
+              body: requestBody,
+            }),
+            getRequestTimeout(),
+            'session.prompt retry'
+          );
+        } catch (retryTimeout) {
+          log('[OpenCode] También timeout en retry:', retryTimeout);
+          return 'Lo siento, el servicio está tardando mucho. Por favor, intenta de nuevo en unos segundos.';
+        }
+      } else {
+        throw timeoutErr;
+      }
+    }
 
     log(`[OpenCode] Respuesta recibida desde ${fromShort}`);
 
-    if (response.error) {
-      throw new Error(response.error.name + ': ' + JSON.stringify(response.error.data));
+    const responseAny = response as any;
+    logSensitive('[OpenCode] Response raw:', JSON.stringify(responseAny).substring(0, 800) + '...');
+    
+    await saveLastResponse(responseAny);
+    
+    if (!responseAny) {
+      log('[OpenCode] Response vacío');
+      return 'Sin respuesta';
     }
 
-    logSensitive('[OpenCode] Response raw:', JSON.stringify(response));
+    const hasRequestEcho = responseAny.model && responseAny.system && responseAny.parts;
+    
+    if (hasRequestEcho) {
+      log('[OpenCode] Respuesta parece ser echo de request, tratando como error');
+      throw new Error('El modelo no generó respuesta, recibió echo de la request');
+    }
+    
+    const responseError = responseAny?.error;
+    
+    if (responseError && typeof responseError !== 'undefined') {
+      const errorInfo = responseError;
+      const errorMsg = typeof errorInfo === 'object' 
+        ? `${errorInfo.name || 'UnknownError'}: ${JSON.stringify(errorInfo.data || errorInfo).substring(0, 300)}`
+        : String(errorInfo);
+      log(`[OpenCode] Error en respuesta: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
 
-    const responseParts = response.data?.parts || response.parts || [];
+    const dataError = responseAny.data?.error;
+    if (dataError) {
+      const errorMsg = `${dataError.name || 'DataError'}: ${JSON.stringify(dataError.data || dataError).substring(0, 300)}`;
+      log(`[OpenCode] Error en data: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+
+    const infoError = responseAny.data?.info?.error;
+    if (infoError) {
+      const errorMsg = `${infoError.name || 'InfoError'}: ${JSON.stringify(infoError.data || infoError).substring(0, 300)}`;
+      log(`[OpenCode] Error en info: ${errorMsg}`);
+      
+      if (infoError.name === 'ContextOverflowError' || infoError.data?.message?.includes('context')) {
+        log(`[OpenCode] Context overflow detectado. Reiniciando sesión...`);
+        deleteSession(phone);
+        
+        try {
+          const { sessionId: newSessionId } = await getOrCreateSession(phone);
+          log(`[OpenCode] Nueva sesión creada para ${fromShort}, reintentando...`);
+          
+          const retryModelObj = parseModelString(configuredModel);
+          const retryResponse = await client.session.prompt({
+            path: { id: newSessionId },
+            body: {
+              model: retryModelObj,
+              system: fullPrompt + '\n\nEl chat se ha reiniciado. Saluda al usuario amablemente.',
+              parts,
+              permission,
+            },
+          });
+          
+          const retryAny = retryResponse as any;
+          const retryParts = retryAny.data?.parts || retryAny.parts || [];
+          const retryText = retryAny.data?.text || retryAny.text;
+          
+          if (retryParts.length === 0 && retryText) {
+            log(`[OpenCode] Nueva sesión respondió para ${fromShort}`);
+            return '⚠️ Tu chat se ha reiniciado debido a que excediste el límite de mensajes. ¡Hola de nuevo! ¿En qué puedo ayudarte hoy?';
+          }
+          
+          return extractTextFromResponse(retryParts);
+        } catch (retryErr) {
+          log('[OpenCode] Error en retry tras context overflow:', retryErr);
+          return '⚠️ Tu chat se ha reiniciado. ¡Hola de nuevo! ¿En qué puedo ayudarte?';
+        }
+      }
+      
+      throw new Error(errorMsg);
+    }
+
+    let responseParts = responseAny.data?.parts || responseAny.parts || [];
+    let responseText = responseAny.data?.text || responseAny.text || responseAny.content || responseAny.response;
+    
     if (!responseParts || responseParts.length === 0) {
-      logSensitive('[OpenCode] Parts vacíos o undefined, respuesta completa:', response);
+      if (responseText) {
+        log('[OpenCode] Usando campo text/content del response');
+        return responseText;
+      }
+      if (typeof responseAny === 'string') {
+        log('[OpenCode] Response es string directo');
+        return responseAny;
+      }
+      if (responseAny.data && typeof responseAny.data === 'string') {
+        log('[OpenCode] Response.data es string directo');
+        return responseAny.data;
+      }
+      logSensitive('[OpenCode] Parts vacíos, response completo:', response);
+      return 'Sin respuesta';
     }
+    
     return extractTextFromResponse(responseParts);
   } catch (err) {
     const errStr = String(err);
+
+    if (errStr.includes('ContextOverflowError') || errStr.includes('context limit')) {
+      log(`[OpenCode] Context overflow para ${fromShort}. Reiniciando sesión...`);
+      deleteSession(phone);
+      
+      try {
+        const { sessionId: newSessionId } = await getOrCreateSession(phone);
+        log(`[OpenCode] Nueva sesión creada para ${fromShort}, reintentando...`);
+        
+        const retryModelObj = parseModelString(configuredModel);
+        const retryResponse = await client.session.prompt({
+          path: { id: newSessionId },
+          body: {
+            model: retryModelObj,
+            system: fullPrompt + '\n\nEl chat se ha reiniciado. Saluda al usuario amablemente.',
+            parts,
+            permission,
+          },
+        });
+        
+        const retryAny = retryResponse as any;
+        const retryParts = retryAny.data?.parts || retryAny.parts || [];
+        const retryText = retryAny.data?.text || retryAny.text;
+        
+        if (retryParts.length === 0 && retryText) {
+          log(`[OpenCode] Nueva sesión respondió para ${fromShort}`);
+          return '⚠️ Tu chat se ha reiniciado debido a que excediste el límite de mensajes. ¡Hola de nuevo!¿En qué puedo ayudarte hoy?';
+        }
+        
+        return extractTextFromResponse(retryParts);
+      } catch (retryErr) {
+        log('[OpenCode] Error en retry tras context overflow:', retryErr);
+        return '⚠️ Tu chat se ha reiniciado. ¡Hola de nuevo! ¿En qué puedo ayudarte?';
+      }
+    }
 
     if (isRecoverableOpenCodeError(err)) {
       log(`[OpenCode] Error de conexión para ${fromShort} (${errStr.substring(0, 80)}...). Verificando servidor...`);
@@ -374,7 +632,7 @@ export async function sendToSession(phone: string, message: string): Promise<str
         log(`[OpenCode] Nueva sesión creada para ${fromShort}, reintentando envío...`);
         
         // Reconstruir prompt (está puede ser una nueva sesión)
-        let retryPrompt = buildSystemPrompt(dbPrompt, appVersion);
+        let retryPrompt = buildSystemPrompt(customPrompt, systemPrompt, appVersion);
         retryPrompt += '\n\nNota: Este es el primer mensaje de esta sesión. El contexto se ha reiniciado. Saluda al usuario amablemente y pregúntale en qué puedes ayudarle.';
         
         const retryPerms = getUserPermissions(phone);
@@ -385,22 +643,34 @@ export async function sendToSession(phone: string, message: string): Promise<str
           bash: retryPerms?.can_modify ? { '*': 'allow' } : { '*': 'deny' },
         };
 
+        const retryModelObj = parseModelString(configuredModel);
+
         const retryResponse = await client.session.prompt({
           path: { id: newSessionId },
           body: {
+            model: retryModelObj,
             system: retryPrompt,
             parts,
             permission: retryPermission,
           },
         });
 
-        if (retryResponse.error) {
-          throw new Error(retryResponse.error.name + ': ' + JSON.stringify(retryResponse.error.data));
+        const retryAny = retryResponse as any;
+        if (retryAny.error) {
+          const errInfo = retryAny.error;
+          throw new Error(`${errInfo.name || 'Error'}: ${JSON.stringify(errInfo.data || errInfo).substring(0, 300)}`);
         }
 
         log(`[OpenCode] Respuesta reintentada recibida desde ${fromShort}`);
-        const responseParts = retryResponse.data?.parts || retryResponse.parts || [];
-        return extractTextFromResponse(responseParts);
+        
+        let retryParts = retryAny.data?.parts || retryAny.parts || [];
+        let retryText = retryAny.data?.text || retryAny.text;
+        
+        if (retryParts.length === 0 && retryText) {
+          return retryText;
+        }
+        
+        return extractTextFromResponse(retryParts);
       } catch (retryErr) {
         log('[OpenCode] Error en reintento:', retryErr);
         return `Lo siento, ocurrió un error al procesar tu mensaje. El servicio de IA está temporalmente indisponible. Por favor, intenta de nuevo en unos minutos.`;
@@ -409,6 +679,9 @@ export async function sendToSession(phone: string, message: string): Promise<str
 
     // Si no es error de conexión, lanzar el error original
     log('[OpenCode] Error en consulta:', err);
+    if (String(err).includes('Timeout')) {
+      return 'Lo siento, el modelo tardó mucho en responder. Por favor, intenta de nuevo.';
+    }
     throw err;
   }
 }

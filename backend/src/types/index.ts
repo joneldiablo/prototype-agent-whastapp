@@ -41,4 +41,5 @@ export interface WhatsAppStatus {
   qr?: string;
   phone?: string;
   lastSync?: string;
+  qrGenerated?: number;
 }

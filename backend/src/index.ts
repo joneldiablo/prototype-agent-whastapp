@@ -119,7 +119,7 @@ const PORT = process.env.PORT || 3000;
 // IMPORTS (DB & Services)
 // ============================================================
 
-import { initDb, getWhitelist, logMessage as dbLogMessage } from './db/index.js';
+import { initDb, getWhitelist, logMessage as dbLogMessage, getUserPermissions } from './db/index.js';
 import { initOpenCode, sendToSession, isOpenCodeServerAvailable } from './services/opencode.js';
 import { connectWhatsApp, setMessageHandler, sendMessage, isConnected, type FileInfo } from './services/whatsapp.js';
 import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
@@ -305,6 +305,23 @@ async function handleIncomingMessage(from: string, message: string, files: FileI
   try {
     log(`[Agent] Procesando mensaje de ${fromShort}...`);
     const response = await sendToSession(from, fullMessage);
+    
+    if (response === 'Sin respuesta') {
+      const userPerms = getUserPermissions(from);
+      const permsInfo = userPerms 
+        ? `can_read: ${userPerms.can_read}, can_create: ${userPerms.can_create}, can_modify: ${userPerms.can_modify}`
+        : 'sin permisos configurados';
+      
+      const errorMsg = `⚠️ Sin respuesta del modelo de IA.\n\n📋 Verificaciones:\n• Modelo seleccionado\n• Permisos del usuario: ${permsInfo}\n• ¿Tienes créditos disponibles?\n\nPor favor, contacta al administrador.`;
+      
+      log(`[Agent] ⚠️ SIN RESPUESTA para ${fromShort} - Permisos: ${permsInfo}`);
+      logMessage(from, fullMessage, errorMsg);
+      
+      if (isConnected()) {
+        await sendMessage(from, errorMsg);
+      }
+      return;
+    }
     
     logMessage(from, fullMessage, response);
     
