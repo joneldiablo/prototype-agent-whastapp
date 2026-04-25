@@ -19,7 +19,7 @@ import { createOpencode, createOpencodeClient, type OpencodeClient } from '@open
 import type { Part } from '@opencode-ai/sdk';
 import { getSessionByPhone, createSession, getConfig, deleteSession, getUserPermissions, getWhitelist, addPendingPermission } from '../db/index.js';
 import { createServer } from 'net';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
@@ -770,13 +770,21 @@ export async function isOpenCodeServerAvailable(): Promise<boolean> {
 export async function closeOpenCode(): Promise<void> {
   if (serverClose) {
     serverClose();
-    client = null;
     serverClose = null;
     log('[OpenCode] Cliente cerrado');
   } else if (client) {
     client = null;
     log('[OpenCode] Cliente desconectado del servidor externo');
   }
+  
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  try {
+    execSync(`fuser -k ${OPENCODE_PORT}/tcp 2>/dev/null || true`, { stdio: 'ignore' });
+    log(`[OpenCode] Proceso en puerto ${OPENCODE_PORT} matado`);
+  } catch {}
+  
+  client = null;
 }
 
 // ============================================================
