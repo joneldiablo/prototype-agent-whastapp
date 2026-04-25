@@ -508,6 +508,14 @@
           <button class="btn btn-primary" id="btn-connect">Conectar</button>
           <button class="btn btn-danger" id="btn-disconnect" disabled>Desconectar</button>
         </div>
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+          <div class="info-row">
+            <span class="info-label">OpenCode</span>
+            <span id="oc-status" class="status-badge status-disconnected">Verificando...</span>
+          </div>
+          <button class="btn btn-warning" id="btn-restart-oc" style="margin-top: 8px; width: 100%;">🔄 Reiniciar OpenCode</button>
+          <span id="oc-message"></span>
+        </div>
       </div>
     </details>
 
@@ -741,6 +749,18 @@
           if (data.data?.qr) {
             qrContainer.innerHTML = `<img src="${data.data.qr}" alt="QR">`;
           }
+        }
+
+        // Check OpenCode status
+        const ocRes = await fetch(`${API_BASE}/api/config/opencode/status`, { headers: getHeaders() });
+        const ocData = await ocRes.json();
+        const ocBadge = document.getElementById('oc-status');
+        if (ocData.data?.available) {
+          ocBadge.textContent = 'Activo';
+          ocBadge.className = 'status-badge status-connected';
+        } else {
+          ocBadge.textContent = 'Inactivo';
+          ocBadge.className = 'status-badge status-disconnected';
         }
       } catch (e) {}
     }
@@ -1055,6 +1075,35 @@
       const msg = document.getElementById('timeout-message');
       msg.textContent = data.success ? '✓ Guardado' : data.message;
       msg.className = data.success ? 'success' : 'error';
+    });
+
+    document.getElementById('btn-restart-oc').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-restart-oc');
+      const msg = document.getElementById('oc-message');
+      btn.disabled = true;
+      btn.textContent = '⏳ Reiniciando...';
+      try {
+        const res = await fetch(`${API_BASE}/api/config/opencode/restart`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (data.success) {
+          msg.textContent = '✓ Reiniciado';
+          msg.style.color = 'green';
+          const ocBadge = document.getElementById('oc-status');
+          ocBadge.textContent = 'Activo';
+          ocBadge.className = 'status-badge status-connected';
+        } else {
+          msg.textContent = 'Error: ' + data.message;
+          msg.style.color = 'red';
+        }
+      } catch (e) {
+        msg.textContent = 'Error de conexión';
+        msg.style.color = 'red';
+      }
+      btn.disabled = false;
+      btn.textContent = '🔄 Reiniciar OpenCode';
     });
 
     let selectedContact = null;

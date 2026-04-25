@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { ApiResponse } from '../types/index.js';
 import { getConfig, setConfig, getMessagesLog } from '../db/index.js';
-import { getAvailableModels } from '../services/opencode.js';
+import { getAvailableModels, closeOpenCode, initOpenCode, isOpenCodeServerAvailable } from '../services/opencode.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -201,6 +201,41 @@ router.get('/messages', (_req, res: Response<ApiResponse>) => {
     message: 'Historial de mensajes',
     data: messages,
   });
+});
+
+router.get('/opencode/status', async (_req, res: Response<ApiResponse>) => {
+  const available = await isOpenCodeServerAvailable();
+  res.json({
+    success: true,
+    error: false,
+    status: 200,
+    code: 200,
+    message: 'Estado de OpenCode',
+    data: { available },
+  });
+});
+
+router.post('/opencode/restart', async (_req, res: Response<ApiResponse>) => {
+  try {
+    await closeOpenCode();
+    await initOpenCode();
+    const available = await isOpenCodeServerAvailable();
+    res.json({
+      success: available,
+      error: !available,
+      status: available ? 200 : 500,
+      code: available ? 200 : 500,
+      message: available ? 'OpenCode reiniciado' : 'Error al reiniciar OpenCode',
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: true,
+      status: 500,
+      code: 500,
+      message: error instanceof Error ? error.message : 'Error al reiniciar',
+    });
+  }
 });
 
 export default router;
