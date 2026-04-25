@@ -6,6 +6,10 @@ import { getAvailableModels, closeOpenCode, initOpenCode, isOpenCodeServerAvaila
 import fs from 'fs';
 import path from 'path';
 
+function log(msg: string) {
+  console.log(`[Config] ${msg}`);
+}
+
 const router = Router();
 
 function getAppVersion(): string {
@@ -217,9 +221,20 @@ router.get('/opencode/status', async (_req, res: Response<ApiResponse>) => {
 
 router.post('/opencode/restart', async (_req, res: Response<ApiResponse>) => {
   try {
+    log('[API] Reiniciando OpenCode...');
     await closeOpenCode();
+    await new Promise(r => setTimeout(r, 1000));
     await initOpenCode();
-    const available = await isOpenCodeServerAvailable();
+    await new Promise(r => setTimeout(r, 1500));
+    
+    let available = false;
+    for (let i = 0; i < 3; i++) {
+      available = await isOpenCodeServerAvailable();
+      if (available) break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    
+    log('[API] OpenCode reiniciado, disponible:', available);
     res.json({
       success: available,
       error: !available,
@@ -228,6 +243,7 @@ router.post('/opencode/restart', async (_req, res: Response<ApiResponse>) => {
       message: available ? 'OpenCode reiniciado' : 'Error al reiniciar OpenCode',
     });
   } catch (error) {
+    log('[API] Error al reiniciar OpenCode:', error);
     res.json({
       success: false,
       error: true,
