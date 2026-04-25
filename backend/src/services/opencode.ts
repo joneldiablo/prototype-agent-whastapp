@@ -506,6 +506,9 @@ export async function sendToSession(phone: string, message: string): Promise<str
           log('[OpenCode] También timeout en retry:', retryTimeout);
           return 'Lo siento, el servicio está tardando mucho. Por favor, intenta de nuevo en unos segundos.';
         }
+      } else if (errStr.includes('tried to bind') || errStr.includes('Wrong API use')) {
+        log('[OpenCode] Error SDK en prompt:', errStr);
+        return 'Hubo un problema con el modelo. Por favor, intenta de nuevo.';
       } else {
         throw timeoutErr;
       }
@@ -518,9 +521,14 @@ export async function sendToSession(phone: string, message: string): Promise<str
     
     await saveLastResponse(responseAny);
     
-    if (!responseAny) {
-      log('[OpenCode] Response vacío');
-      return 'Sin respuesta';
+    if (!responseAny || Object.keys(responseAny).length === 0) {
+      log('[OpenCode] Response vacío o undefined');
+      return 'Sin respuesta del modelo. Por favor, intenta de nuevo.';
+    }
+    
+    if (!responseAny.data || (responseAny.data && Object.keys(responseAny.data).length === 0)) {
+      log('[OpenCode] Response data vacío');
+      return 'Sin respuesta del modelo. Por favor, intenta de nuevo.';
     }
 
     const hasRequestEcho = responseAny.model && responseAny.system && responseAny.parts;
@@ -607,13 +615,22 @@ export async function sendToSession(phone: string, message: string): Promise<str
         log('[OpenCode] Response.data es string directo');
         return responseAny.data;
       }
+      if (responseAny.data?.message) {
+        log('[OpenCode] Response tiene message field');
+        return responseAny.data.message;
+      }
       logSensitive('[OpenCode] Parts vacíos, response completo:', response);
-      return 'Sin respuesta';
+      return 'Sin respuesta del modelo. Por favor, intenta de nuevo.';
     }
     
     return extractTextFromResponse(responseParts);
   } catch (err) {
     const errStr = String(err);
+    
+    if (errStr.includes('tried to bind a value of an unknown type') || errStr.includes('Wrong API use')) {
+      log('[OpenCode] Error del SDK parseando respuesta:', errStr);
+      return 'El modelo tardó en responder. Por favor, intenta de nuevo.';
+    }
 
     if (errStr.includes('ContextOverflowError') || errStr.includes('context limit')) {
       log(`[OpenCode] Context overflow para ${fromShort}. Reiniciando sesión...`);
