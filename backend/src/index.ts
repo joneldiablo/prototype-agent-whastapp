@@ -242,6 +242,26 @@ app.get('/api/config/system-prompt-preview', (_req, res) => {
 app.use('/api/whitelist', requireAuth, whitelistRoutes);
 app.use('/api/config', requireAuth, configRoutes);
 
+// Rutas públicas para OpenCode (solo restart y status)
+import { closeOpenCode, initOpenCode, isOpenCodeServerAvailable } from './services/opencode.js';
+
+app.get('/api/public/opencode/status', async (_req, res) => {
+  res.json({ success: true, data: { available: true } });
+});
+
+app.post('/api/public/opencode/restart', async (_req, res) => {
+  try {
+    log('[API] Reiniciando OpenCode...');
+    await closeOpenCode();
+    await new Promise(r => setTimeout(r, 2000));
+    await initOpenCode();
+    await new Promise(r => setTimeout(r, 5000));
+    res.json({ success: true, message: 'OpenCode reiniciado' });
+  } catch (error) {
+    res.json({ success: false, message: error instanceof Error ? error.message : 'Error' });
+  }
+});
+
 // ============================================================
 // HANDLER DE MENSAJES
 // ============================================================

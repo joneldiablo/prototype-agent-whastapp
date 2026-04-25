@@ -223,17 +223,11 @@ router.post('/opencode/restart', async (_req, res: Response<ApiResponse>) => {
   try {
     log('[API] Reiniciando OpenCode...');
     await closeOpenCode();
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 2000));
     await initOpenCode();
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 5000));
     
-    let available = false;
-    for (let i = 0; i < 3; i++) {
-      available = await isOpenCodeServerAvailable();
-      if (available) break;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    
+    const available = await isOpenCodeServerAvailable();
     log('[API] OpenCode reiniciado, disponible:', available);
     res.json({
       success: available,

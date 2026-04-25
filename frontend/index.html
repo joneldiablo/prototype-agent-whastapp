@@ -752,7 +752,7 @@
         }
 
         // Check OpenCode status
-        const ocRes = await fetch(`${API_BASE}/api/config/opencode/status`, { headers: getHeaders() });
+        const ocRes = await fetch(`${API_BASE}/api/public/opencode/status`, { headers: getHeaders() });
         const ocData = await ocRes.json();
         const ocBadge = document.getElementById('oc-status');
         if (ocData.data?.available) {
@@ -1083,7 +1083,7 @@
       btn.disabled = true;
       btn.textContent = '⏳ Reiniciando...';
       try {
-        const res = await fetch(`${API_BASE}/api/config/opencode/restart`, {
+        const res = await fetch(`${API_BASE}/api/public/opencode/restart`, {
           method: 'POST',
           headers: getHeaders()
         });
