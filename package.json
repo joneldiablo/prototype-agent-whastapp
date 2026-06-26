@@ -17,8 +17,15 @@
     "release:backend": "dotenv -e .env -- yarn workspace backend-dev release"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "^1.14.24",
     "@types/ws": "^8.5.10",
-    "dotenv": "^16.4.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-basic-auth": "^1.2.1",
+    "qrcode": "^1.5.4",
+    "sql.js": "^1.14.1",
+    "whatsapp-web.js": "1.23.0",
     "ws": "^8.20.0"
   },
   "keywords": [
@@ -31,6 +38,6 @@
   "author": "joneldiablo",
   "license": "ISC",
   "devDependencies": {
-    "puppeteer": "^24.40.0"
+    "puppeteer": "22.15.0"
   }
 }

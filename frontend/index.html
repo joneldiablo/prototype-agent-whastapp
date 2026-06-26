@@ -1017,7 +1017,7 @@
       qrContainer.innerHTML = '<p>Generando QR...</p>';
 
       try {
-        await fetch(`${API_BASE}/api/whatsapp/connect`, { method: 'POST' });
+        await fetch(`${API_BASE}/api/whatsapp/connect`, { method: 'POST', headers: getHeaders() });
         clearInterval(connectionTimeout);
         connectionTimeout = setInterval(checkStatus, 2000);
         setTimeout(() => { clearInterval(connectionTimeout); connectionTimeout = setInterval(checkStatus, 5000); }, 60000);
@@ -1030,14 +1030,14 @@
     });
 
     document.getElementById('btn-disconnect').addEventListener('click', async () => {
-      await fetch(`${API_BASE}/api/whatsapp/disconnect`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/whatsapp/disconnect`, { method: 'POST', headers: getHeaders() });
       checkStatus();
     });
 
     document.getElementById('btn-save-prompt').addEventListener('click', async () => {
       const prompt = document.getElementById('system-prompt').value;
       const res = await fetch(`${API_BASE}/api/config/system-prompt`, {
-        method: 'PUT',
+        method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ prompt })
       });
@@ -1209,11 +1209,24 @@
     };
 
     let ws = null;
+    let pollInterval = null;
+    
+    function startPolling() {
+      if (pollInterval) return;
+      pollInterval = setInterval(() => loadMessages(), 10000);
+    }
+    
     function connectWebSocket() {
       if (!authToken) return;
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}?token=${authToken}`);
-      ws.onmessage = (e) => { const msg = JSON.parse(e.data); if (msg.type === 'new_message') loadMessages(); };
-      ws.onclose = () => { if (isLoggedIn()) setTimeout(connectWebSocket, 3000); };
+      try {
+        const wsProtocol = 'wss:';
+        ws = new WebSocket(`${wsProtocol}//${location.host}?token=${authToken}`);
+        ws.onmessage = (e) => { const msg = JSON.parse(e.data); if (msg.type === 'new_message') loadMessages(); };
+        ws.onclose = () => { ws = null; startPolling(); };
+        ws.onerror = () => { ws = null; startPolling(); };
+      } catch (e) {
+        startPolling();
+      }
     }
 
     function loadAll() {

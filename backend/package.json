@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "bun run --watch ../backend/src/index.ts",
     "start": "bun run ../backend/src/index.ts",
-    "build": "bun build ../backend/src/index.ts --outdir dist --target node",
+    "build": "PUPPETEER_SKIP_DOWNLOAD=true bun build ../backend/src/index.ts --outdir dist --target node",
     "test": "bun test"
   },
   "dependencies": {
@@ -18,9 +18,9 @@
     "express-basic-auth": "^1.2.1",
     "puppeteer": "^22.0.0",
     "qrcode": "^1.5.4",
-    "sql.js": "^1.10.0",
-    "ws": "^8.18.0",
-    "whatsapp-web.js": "^1.23.0"
+    "sql.js": "^1.14.1",
+    "whatsapp-web.js": "^1.23.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

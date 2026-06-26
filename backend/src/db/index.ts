@@ -1,9 +1,12 @@
 import initSqlJs, { Database } from 'sql.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let db: Database | null = null;
-const dbPath = path.join(import.meta.dir, '../../data/whatsapp.db');
+const dbPath = path.join(__dirname, '../../data/whatsapp.db');
 
 export async function initDb(): Promise<Database> {
   if (db) return db;
@@ -46,6 +49,35 @@ export async function initDb(): Promise<Database> {
       patterns TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(phone, request_id)
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS system_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      value TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS messages_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_number TEXT NOT NULL,
+      message TEXT,
+      response TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL UNIQUE,
+      opencode_session_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 

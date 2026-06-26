@@ -21,8 +21,11 @@ import QRCode from 'qrcode';
 import { rm, mkdir, writeFile } from 'fs/promises';
 import { exec } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import type { WhatsAppStatus } from '../types/index.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { setConfig, logMessage } from '../db/index.js';
 
 // ============================================================
@@ -75,7 +78,7 @@ export interface FileInfo {
   mime: string;
 }
 
-const sessionPath = path.join(import.meta.dir, '../../data/whatsapp-sessions');
+const sessionPath = path.join(__dirname, '../../data/whatsapp-sessions');
 
 // ============================================================
 // CALLBACKS
@@ -131,7 +134,7 @@ async function cleanupStaleSession(): Promise<void> {
 // FUNCIONES PRIVADAS (Archivos)
 // ============================================================
 
-const filesPath = path.join(import.meta.dir, '../../files');
+const filesPath = path.join(__dirname, '../../files');
 
 async function ensureFilesDir(): Promise<void> {
   await mkdir(filesPath, { recursive: true });
@@ -791,6 +794,10 @@ export async function getQR(): Promise<string | null> {
     } catch {}
     client = null;
   }
+  
+  // Cleanup forzado antes de regenerar
+  await cleanupStaleSession();
+  await new Promise(r => setTimeout(r, 3000));
   
   try {
     client = await initClient();

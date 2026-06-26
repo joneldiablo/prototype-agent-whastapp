@@ -26,6 +26,10 @@ import { mkdir } from 'fs/promises';
 import path from 'path';
 import fs from 'fs';
 import { WebSocketServer } from 'ws';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 import whatsappRoutes from './routes/whatsapp.js';
 import whitelistRoutes from './routes/whitelist.js';
@@ -34,27 +38,13 @@ import configRoutes from './routes/config.js';
 const APP_VERSION = JSON.parse(fs.readFileSync('./package.json', 'utf8')).version || '1.0.0';
 
 // ============================================================
-// WEBSOCKET SERVER
+// WEBSOCKET SERVER (se configura después de las imports)
 // ============================================================
 
 const WS_PORT = parseInt(process.env.PORT || '3000', 10) + 1;
 const wss = new WebSocketServer({ port: WS_PORT });
 
 const clients = new Set<any>();
-
-wss.on('connection', (ws, req) => {
-  // Validar token en query string
-  const url = new URL(req.url || '', 'http://localhost');
-  const token = url.searchParams.get('token');
-  
-  if (!token || !validateToken(token).valid) {
-    ws.close(1008, 'Unauthorized');
-    return;
-  }
-  
-  clients.add(ws);
-  ws.on('close', () => clients.delete(ws));
-});
 
 /**
  * Envía mensaje a todos los clientes conectados.
@@ -119,9 +109,9 @@ const PORT = process.env.PORT || 3000;
 // IMPORTS (DB & Services)
 // ============================================================
 
-import { initDb, getWhitelist, logMessage as dbLogMessage, getUserPermissions, addPendingPermission, removePendingPermission, getPendingPermission, hasPendingPermission } from './db/index.js';
-import { initOpenCode, sendToSession, isOpenCodeServerAvailable, onPermissionAsked } from './services/opencode.js';
-import { connectWhatsApp, setMessageHandler, sendMessage, isConnected, type FileInfo } from './services/whatsapp.js';
+import { initDb, getWhitelist, logMessage as dbLogMessage, getUserPermissions, addPendingPermission, removePendingPermission, getPendingPermission, hasPendingPermission, getConfig } from './db/index.js';
+import { initOpenCode, sendToSession, isOpenCodeServerAvailable, onPermissionAsked, closeOpenCode } from './services/opencode.js';
+import { connectWhatsApp, setMessageHandler, sendMessage, isConnected, type FileInfo, getWhatsAppStatus, getQR } from './services/whatsapp.js';
 import { login as authLogin, logout as authLogout, validateToken } from './services/auth.js';
 
 // ============================================================
@@ -130,8 +120,30 @@ import { login as authLogin, logout as authLogout, validateToken } from './servi
 
 await mkdir('./data', { recursive: true });
 await initDb();
-await initOpenCode(APP_VERSION);
-await connectWhatsApp();
+
+// OpenCode y WhatsApp NO se inician automáticamente
+// Solo se inician cuando el usuario lo solicita desde el admin
+
+log('[System] Servidor listo');
+
+// WebSocket connection handler (se registra después de tener validateToken)
+wss.on('connection', (ws, req) => {
+  // Validar token en query string
+  const url = new URL(req.url || '', 'http://localhost');
+  const token = url.searchParams.get('token');
+  
+  if (!token || !validateToken(token).valid) {
+    ws.close(1008, 'Unauthorized');
+    return;
+  }
+  
+  clients.add(ws);
+  ws.on('close', () => clients.delete(ws));
+});
+
+// ============================================================
+// CONFIGURACIÓN DE PERMISOS
+// ============================================================
 
 // Configurar callback para permisos
 onPermissionAsked(async (phone: string, requestId: string, permission: string, patterns: string[]) => {
@@ -243,7 +255,6 @@ app.use('/api/whitelist', requireAuth, whitelistRoutes);
 app.use('/api/config', requireAuth, configRoutes);
 
 // Rutas públicas para OpenCode (solo restart y status)
-import { closeOpenCode, initOpenCode, isOpenCodeServerAvailable } from './services/opencode.js';
 
 app.get('/api/public/opencode/status', async (_req, res) => {
   res.json({ success: true, data: { available: true } });
@@ -482,7 +493,7 @@ app.use('/api/config', configRoutes);
 
 // Frontend
 app.get('/admin', (_req, res) => {
-  res.sendFile(path.join(import.meta.dir, '../../frontend/index.html'));
+  res.sendFile(path.join(__dirname, '../../frontend/index.html'));
 });
 
 app.get('/', (_req, res) => {
@@ -508,5 +519,3 @@ log('[System] iniciando');
 app.listen(PORT, () => {
   log(`Servidor corriendo en http://localhost:${PORT}`);
 });
-
-export default app;
